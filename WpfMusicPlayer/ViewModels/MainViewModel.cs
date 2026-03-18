@@ -209,14 +209,20 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     private void OnPlayPause()
     {
-        if (!_musicPlayer.IsInitialized()) return;
-
+        if (!_musicPlayer.IsInitialized())
+        {
+            _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
+            return;
+        }
+        
         if (_musicPlayer.IsPlaying())
         {
+            _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
             _musicPlayer.Pause();
         }
         else
         {
+            _syncContext.Post(_ => PlayPauseContent = "\u23F8", null);
             _musicPlayer.Start();
         }
     }
@@ -228,7 +234,9 @@ public class MainViewModel : ViewModelBase, IDisposable
 
         try
         {
-            OpenFile(path);
+            await Task.Run(() => OpenFile(path));
+            _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
+
         }
         catch (ArgumentException ex)
         {
