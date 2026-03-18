@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "WpfMusicPlayer": {
+      "commandName": "Project",
+      "nativeDebugging": true
+    }
+  }
+}
