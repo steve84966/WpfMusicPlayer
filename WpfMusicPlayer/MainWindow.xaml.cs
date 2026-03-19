@@ -1,6 +1,7 @@
 ﻿using System.Windows;
 using System.Windows.Input;
 using MusicPlayerLibrary;
+using WpfMusicPlayer.Helpers;
 using WpfMusicPlayer.Services;
 using WpfMusicPlayer.ViewModels;
 
@@ -18,6 +19,12 @@ namespace WpfMusicPlayer
             InitializeComponent();
             DataContext = new MainViewModel(new FileDialogService());
             AtlTraceRedirectManager.Init();
+            SourceInitialized += OnSourceInitialized;
+        }
+
+        private void OnSourceInitialized(object? sender, EventArgs e)
+        {
+            GaussianBlueHelper.EnableBlur(this);
         }
 
         private void MainWindow_Closed(object sender, EventArgs e)

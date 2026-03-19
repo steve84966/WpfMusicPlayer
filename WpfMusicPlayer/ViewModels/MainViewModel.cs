@@ -13,6 +13,7 @@ public class MainViewModel : ViewModelBase, IDisposable
     private readonly IFileDialogService _fileDialogService;
     private readonly SynchronizationContext _syncContext;
     private MusicPlayer _musicPlayer;
+    private string? _currentFilePath;
 
     public MainViewModel(IFileDialogService fileDialogService)
     {
@@ -102,6 +103,7 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     public void OpenFile(string filePath)
     {
+        _currentFilePath = filePath;
         _musicPlayer.Dispose();
         _musicPlayer = new MusicPlayer();
         SubscribePlayerEvents();
@@ -253,17 +255,135 @@ public class MainViewModel : ViewModelBase, IDisposable
         var lyricsStr = _musicPlayer.GetID3Lyric();
         Lyrics.Clear();
 
-        if (string.IsNullOrEmpty(lyricsStr))
+        if (!string.IsNullOrEmpty(lyricsStr))
         {
-            Lyrics.Add("No lyrics available");
+            ParseAndAddLocalLyric(lyricsStr);
             return;
         }
 
-        var lines = lyricsStr.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries);
-        foreach (var line in lines)
+        string? lrcPath = FindBestLrcFile();
+        if (!string.IsNullOrEmpty(lrcPath))
         {
-            Lyrics.Add(line);
+            try
+            {
+                var content = File.ReadAllText(lrcPath);
+                ParseAndAddLocalLyric(content);
+                return;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to load lrc: {ex.Message}");
+            }
         }
+
+        // Fallback to same filename
+        var exactLrcPath = Path.ChangeExtension(_currentFilePath, ".lrc");
+        if (File.Exists(exactLrcPath))
+        {
+            try
+            {
+                var content = File.ReadAllText(exactLrcPath);
+                ParseAndAddLocalLyric(content);
+                return;
+            }
+            catch { }
+        }
+
+        Lyrics.Add("No lyrics available");
+    }
+
+    private void ParseAndAddLocalLyric(string content)
+    {
+        var lyricController = new LrcFileController();
+        lyricController.ParseLrcStream(content);
+        if (!lyricController.Valid()) return;
+        for (var i = 0; i < lyricController.GetLrcNodeCount(); ++i)
+        {
+            var lyricIndex = lyricController.GetLrcLineAuxIndex(i, LrcAuxiliaryInfo.Lyric);
+            Lyrics.Add(lyricController.GetLrcLineAt(i, lyricIndex));
+        }
+    }
+
+    private string? FindBestLrcFile()
+    {
+        if (string.IsNullOrEmpty(_currentFilePath)) return null;
+
+        var fileDir = Path.GetDirectoryName(_currentFilePath);
+        if (string.IsNullOrEmpty(fileDir)) return null;
+
+        var searchPaths = new List<string>
+        {
+            fileDir,
+            Path.GetFullPath(Path.Combine(fileDir, "..")),
+        };
+
+        void AddKnownPath(Environment.SpecialFolder folder)
+        {
+            var path = Environment.GetFolderPath(folder);
+            if (!string.IsNullOrEmpty(path))
+            {
+                searchPaths.Add(path);
+                searchPaths.Add(Path.Combine(path, "Lyrics"));
+            }
+        }
+
+        AddKnownPath(Environment.SpecialFolder.MyMusic);
+        AddKnownPath(Environment.SpecialFolder.MyDocuments);
+
+        var targetName = _musicPlayer.GetSongTitle();
+        if (string.IsNullOrEmpty(targetName))
+        {
+            targetName = Path.GetFileNameWithoutExtension(_currentFilePath);
+        }
+
+        foreach (var dir in searchPaths)
+        {
+            if (!Directory.Exists(dir)) continue;
+
+            try
+            {
+                var lrcFiles = Directory.GetFiles(dir, "*.lrc");
+                string? bestFile = null;
+                float bestSimilarity = 0f;
+
+                foreach (var file in lrcFiles)
+                {
+                    var fileName = Path.GetFileNameWithoutExtension(file);
+
+                    if (fileName.Contains(targetName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return file;
+                    }
+
+                    float sim = CalculateJaccardSimilarity(fileName, targetName);
+                    if (sim > 0.7f && sim > bestSimilarity)
+                    {
+                        bestSimilarity = sim;
+                        bestFile = file;
+                    }
+                }
+
+                if (bestFile != null) return bestFile;
+            }
+            catch { }
+        }
+
+        return null;
+    }
+
+    private static float CalculateJaccardSimilarity(string str1, string str2)
+    {
+        var set1 = new HashSet<char>(str1);
+        var set2 = new HashSet<char>(str2);
+
+        var intersection = new HashSet<char>(set1);
+        intersection.IntersectWith(set2);
+
+        var union = new HashSet<char>(set1);
+        union.UnionWith(set2);
+
+        if (union.Count == 0) return 0f;
+        return (float)intersection.Count / union.Count;
     }
 
     private static BitmapImage ConvertDrawingImageToWpfImage(System.Drawing.Image drawingImage)

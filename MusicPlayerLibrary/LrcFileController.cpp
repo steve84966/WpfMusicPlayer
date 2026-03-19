@@ -726,9 +726,13 @@ void LrcFileController::ParseLrcStream(System::String^ lrcString)
 {
     check_if_null();
     pin_ptr<const wchar_t> wch = PtrToStringChars(lrcString);
+    int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wch, -1, nullptr, 0, nullptr, nullptr);
+    CStringA utf8Str;
+    WideCharToMultiByte(CP_UTF8, 0, wch, -1, utf8Str.GetBuffer(utf8Len), utf8Len, nullptr, nullptr);
+    utf8Str.ReleaseBuffer();
     CMemFile mfcMemFile;
-    mfcMemFile.Write(wch, static_cast<UINT>(wcslen(wch) * sizeof(TCHAR)));
-    
+    mfcMemFile.Write(utf8Str.GetString(), static_cast<UINT>(utf8Str.GetLength()));
+    mfcMemFile.SeekToBegin();
     native_handle->parse_lrc_file_stream(&mfcMemFile);
 }
 
