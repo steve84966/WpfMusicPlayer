@@ -374,4 +374,10 @@ namespace MusicPlayerLibrary {
 		}
 	};
 
+	public ref class SmtcInteropHelper abstract sealed
+	{
+	public:
+		static IntPtr GetSmtcForWindow(IntPtr hWnd);
+	};
+
 }

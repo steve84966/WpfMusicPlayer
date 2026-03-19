@@ -68,6 +68,12 @@
 #include <shlwapi.h>
 #include <functiondiscoverykeys_devpkey.h>
 
+#include <roapi.h>
+#include <SystemMediaTransportControlsInterop.h>
+#include <winstring.h>
+
+#pragma comment(lib, "runtimeobject.lib")
+
 #if defined(__cplusplus)
 extern "C" {
 #endif

@@ -12,17 +12,20 @@ namespace WpfMusicPlayer.ViewModels;
 public class MainViewModel : ViewModelBase, IDisposable
 {
     private readonly IFileDialogService _fileDialogService;
+    private readonly ISmtcService _smtcService;
     private readonly SynchronizationContext _syncContext;
     private MusicPlayer _musicPlayer;
     private string? _currentFilePath;
     private LrcFileController? _lrcFileController;
 
-    public MainViewModel(IFileDialogService fileDialogService)
+    public MainViewModel(IFileDialogService fileDialogService, ISmtcService smtcService)
     {
         _fileDialogService = fileDialogService;
+        _smtcService = smtcService;
         _syncContext = SynchronizationContext.Current!;
         _musicPlayer = new MusicPlayer();
         SubscribePlayerEvents();
+        SubscribeSmtcEvents();
 
         PlayPauseCommand = new RelayCommand(OnPlayPause);
         OpenCommand = new RelayCommand(async () => await OnOpenAsync());
@@ -208,6 +211,20 @@ public class MainViewModel : ViewModelBase, IDisposable
         _musicPlayer.OnPlayerStop += OnStop;
     }
 
+    private void SubscribeSmtcEvents()
+    {
+        _smtcService.PlayRequested += () => _syncContext.Post(_ =>
+        {
+            if (!_musicPlayer.IsPlaying()) OnPlayPause();
+        }, null);
+        _smtcService.PauseRequested += () => _syncContext.Post(_ =>
+        {
+            if (_musicPlayer.IsPlaying()) OnPlayPause();
+        }, null);
+        _smtcService.NextRequested += () => _syncContext.Post(_ => NextCommand.Execute(null), null);
+        _smtcService.PreviousRequested += () => _syncContext.Post(_ => PrevCommand.Execute(null), null);
+    }
+
     private void OnFileInit()
     {
         _syncContext.Post(_ =>
@@ -218,6 +235,10 @@ public class MainViewModel : ViewModelBase, IDisposable
 
             SongTitle = _musicPlayer.GetSongTitle() ?? "Unknown Title";
             ArtistName = _musicPlayer.GetSongArtist() ?? "Unknown Artist";
+            
+            // 坑：UpdateMetadata会清除缩略图，对非NCM文件，FileInit总是晚于AlbumArtInit，导致设置的缩略图被清空
+            _smtcService.UpdateTextMetadata(SongTitle, ArtistName);
+            _smtcService.UpdateTimeline(TimeSpan.Zero, TimeSpan.FromSeconds(length));
 
             _musicPlayer.SetMasterVolume((float)Volume);
 
@@ -229,7 +250,25 @@ public class MainViewModel : ViewModelBase, IDisposable
     {
         _syncContext.Post(_ =>
         {
-            AlbumCoverImage = image != null ? ConvertDrawingImageToWpfImage(image) : null;
+            try
+            {
+                AlbumCoverImage = image != null ? ConvertDrawingImageToWpfImage(image) : null;
+            
+                Stream? stream = null;
+                if (image != null)
+                {
+                    stream = new MemoryStream();
+                    image.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
+                    stream.Position = 0;
+                }
+                _smtcService.UpdateMetadata(SongTitle, ArtistName, stream);
+                stream?.Dispose();
+            }
+            finally
+            {
+                image?.Dispose();
+            }
+
         }, null);
     }
 
@@ -266,12 +305,22 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     private void OnStart()
     {
-        _syncContext.Post(_ => PlayPauseContent = "\u23F8", null);
+        _syncContext.Post(_ => 
+        {
+            PlayPauseContent = "\u23F8";
+            _smtcService.UpdatePlaybackStatus(PlaybackState.Playing);
+            _smtcService.UpdateTimeline(TimeSpan.FromSeconds(ProgressValue), TimeSpan.FromSeconds(ProgressMaximum));
+        }, null);
     }
 
     private void OnPause()
     {
-        _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
+        _syncContext.Post(_ => 
+        {
+            PlayPauseContent = "\u25B6";
+            _smtcService.UpdatePlaybackStatus(PlaybackState.Paused);
+            _smtcService.UpdateTimeline(TimeSpan.FromSeconds(ProgressValue), TimeSpan.FromSeconds(ProgressMaximum));
+        }, null);
     }
 
     private void OnStop()
@@ -281,6 +330,8 @@ public class MainViewModel : ViewModelBase, IDisposable
             PlayPauseContent = "\u25B6";
             ProgressValue = 0;
             CurrentTime = "0:00";
+            _smtcService.UpdatePlaybackStatus(PlaybackState.Stopped);
+            _smtcService.UpdateTimeline(TimeSpan.Zero, TimeSpan.FromSeconds(ProgressMaximum));
         }, null);
     }
 
@@ -299,12 +350,10 @@ public class MainViewModel : ViewModelBase, IDisposable
         
         if (_musicPlayer.IsPlaying())
         {
-            _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
             _musicPlayer.Pause();
         }
         else
         {
-            _syncContext.Post(_ => PlayPauseContent = "\u23F8", null);
             IsDraggingSlider = true;
             _musicPlayer.Start();
             await Task.Delay(200);

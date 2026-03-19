@@ -209,8 +209,10 @@ int MusicPlayerLibrary::MusicPlayerNative::load_audio_context_stream(CFile* in_f
 	}
 
 	if (this->file_extension != _T("ncm"))
+	{
 		managed_music_player->ProcessEvent(WM_PLAYER_ALBUM_ART_INIT, reinterpret_cast<WPARAM>(album_art), 0);
-		//AfxGetMainWnd()->PostMessage(WM_PLAYER_ALBUM_ART_INIT, reinterpret_cast<WPARAM>(album_art));
+		album_art = nullptr; // ownership transferred to async event handler
+	}
 	read_metadata();
 
 	// 从0ms开始读取
@@ -282,6 +284,11 @@ int MusicPlayerLibrary::MusicPlayerNative::load_audio_context_stream(CFile* in_f
 
 void MusicPlayerLibrary::MusicPlayerNative::release_audio_context()
 {
+	if (album_art)
+	{
+		DeleteObject(album_art);
+		album_art = nullptr;
+	}
 	if (avio_context)
 	{
 		// 释放缓冲区上下文
@@ -1712,6 +1719,7 @@ void MusicPlayerLibrary::MusicPlayerNative::Stop()
 	if (IsInitialized() && IsPlaying()) {
 		pts_seconds = 0;
 		stop_audio_playback(0);
+		managed_music_player->ProcessEvent(WM_PLAYER_STOP, 0, 0);
 	}
 }
 
@@ -1821,6 +1829,7 @@ void MusicPlayerLibrary::MusicPlayerNative::Pause()
 		is_pause = true;
 		pts_seconds = elapsed_time;
 		stop_audio_playback(0);
+		managed_music_player->ProcessEvent(WM_PLAYER_PAUSE, 0, 0);
 	}
 }
 
@@ -1907,7 +1916,11 @@ void MusicPlayerLibrary::MusicPlayer::ProcessEventCore(Object^ stateObj)
 			}
 			IntPtr hBitmap = static_cast<IntPtr>(static_cast<long long>(wParam));
 			System::Drawing::Image^ bitmap = System::Drawing::Image::FromHbitmap(hBitmap);
+			DeleteObject(reinterpret_cast<HBITMAP>(wParam));
 			OnPlayerAlbumArtInit(bitmap);
+		}
+		else if (wParam != 0) {
+			DeleteObject(reinterpret_cast<HBITMAP>(wParam));
 		}
 		break;
 	case WM_PLAYER_START:
@@ -2078,6 +2091,55 @@ void MusicPlayerLibrary::MusicPlayer::SetEqualizerBand(int index, int value)
 {
 	check_if_null();
 	native_handle->SetEqualizerBand(index, value);
+}
+
+// {ddb0472d-c911-4a1f-86d9-dc3d71a95f5a} ISystemMediaTransportControlsInterop
+static const IID IID_ISystemMediaTransportControlsInterop = 
+	{ 0xddb0472d, 0xc911, 0x4a1f, { 0x86, 0xd9, 0xdc, 0x3d, 0x71, 0xa9, 0x5f, 0x5a } };
+
+IntPtr MusicPlayerLibrary::SmtcInteropHelper::GetSmtcForWindow(IntPtr hWnd)
+{
+	HWND hwnd = static_cast<HWND>(hWnd.ToPointer());
+
+	HSTRING_HEADER hstrHeader;
+	HSTRING hstrClassName = nullptr;
+	static const wchar_t className[] = L"Windows.Media.SystemMediaTransportControls";
+	HRESULT hr = WindowsCreateStringReference(
+		className,
+		static_cast<UINT32>(wcslen(className)),
+		&hstrHeader,
+		&hstrClassName);
+	if (FAILED(hr))
+	{
+		ATLTRACE("error: SmtcInteropHelper: WindowsCreateStringReference failed, hr=0x%08X\n", hr);
+		return IntPtr::Zero;
+	}
+
+	ISystemMediaTransportControlsInterop* interop = nullptr;
+	hr = RoGetActivationFactory(
+		hstrClassName,
+		IID_ISystemMediaTransportControlsInterop,
+		reinterpret_cast<void**>(&interop));
+	if (FAILED(hr) || interop == nullptr)
+	{
+		ATLTRACE("error: SmtcInteropHelper: RoGetActivationFactory failed, hr=0x%08X\n", hr);
+		return IntPtr::Zero;
+	}
+
+	IInspectable* smtc = nullptr;
+	hr = interop->GetForWindow(
+		hwnd,
+		IID_IInspectable,
+		reinterpret_cast<void**>(&smtc));
+	interop->Release();
+
+	if (FAILED(hr) || smtc == nullptr)
+	{
+		ATLTRACE("error: SmtcInteropHelper: GetForWindow failed, hr=0x%08X\n", hr);
+		return IntPtr::Zero;
+	}
+
+	return IntPtr(smtc);
 }
 
 void MusicPlayerLibrary::AtlTraceRedirectManager::Init()

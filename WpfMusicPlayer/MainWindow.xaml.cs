@@ -22,9 +22,15 @@ namespace WpfMusicPlayer
         public MainWindow()
         {
             InitializeComponent();
-            DataContext = new MainViewModel(new FileDialogService());
+            var smtcService = new SmtcService();
+            DataContext = new MainViewModel(new FileDialogService(), smtcService);
             AtlTraceRedirectManager.Init();
-            SourceInitialized += OnSourceInitialized;
+            SourceInitialized += (s, e) =>
+            {
+                var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                smtcService.Initialize(handle);
+                OnSourceInitialized(s, e);
+            };
             ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         }
 

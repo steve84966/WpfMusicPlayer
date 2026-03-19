@@ -27,6 +27,9 @@
     <ClInclude Include="AtlTraceRedirect.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="LrcFileController.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="MusicPlayerLibrary.cpp">
@@ -42,6 +45,9 @@
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="AtlTraceRedirect.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="LrcFileController.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>

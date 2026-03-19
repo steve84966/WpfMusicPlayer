@@ -4,3 +4,7 @@
 
 // 当使用预编译的头时，需要使用此源文件，编译才能成功。
 #include <cpp-base64/base64.cpp>
+
+// Define Windows Runtime GUIDs for System Media Transport Controls
+#include <initguid.h>
+#include <SystemMediaTransportControlsInterop.h>
