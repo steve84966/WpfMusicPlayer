@@ -302,6 +302,7 @@ public:
 	LrcFileController();
 
 	void ParseLrcFile(System::String^ filePath);
+	void ParseLrcStream(System::String^ lrcString);
 	void ClearLrcNodes();
 	void SetTimeStamp(int timeStampMs);
 	void TimeStampIncrease(int ms);

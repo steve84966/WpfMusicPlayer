@@ -1,5 +1,7 @@
 ﻿#include "pch.h"
 #include "LrcFileController.h"
+
+#include <bit>
 #include <msclr/marshal_cppstd.h>
 #include <vcclr.h>
 
@@ -718,6 +720,16 @@ void LrcFileController::ParseLrcFile(System::String^ filePath)
     pin_ptr<const wchar_t> wch = PtrToStringChars(filePath);
     CString mfcPath(wch);
     native_handle->parse_lrc_file(mfcPath);
+}
+
+void LrcFileController::ParseLrcStream(System::String^ lrcString)
+{
+    check_if_null();
+    pin_ptr<const wchar_t> wch = PtrToStringChars(lrcString);
+    CMemFile mfcMemFile;
+    mfcMemFile.Write(wch, static_cast<UINT>(wcslen(wch) * sizeof(TCHAR)));
+    
+    native_handle->parse_lrc_file_stream(&mfcMemFile);
 }
 
 void LrcFileController::ClearLrcNodes()

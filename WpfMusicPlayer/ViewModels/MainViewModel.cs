@@ -25,6 +25,8 @@ public class MainViewModel : ViewModelBase, IDisposable
         OpenCommand = new RelayCommand(async () => await OnOpenAsync());
         PrevCommand = new RelayCommand(() => { });
         NextCommand = new RelayCommand(() => { });
+        PlayModeCommand = new RelayCommand(() => { });
+        TranslateCommand = new RelayCommand(() => { });
     }
 
     public string SongTitle
@@ -95,6 +97,8 @@ public class MainViewModel : ViewModelBase, IDisposable
     public ICommand OpenCommand { get; }
     public ICommand PrevCommand { get; }
     public ICommand NextCommand { get; }
+    public ICommand PlayModeCommand { get; }
+    public ICommand TranslateCommand { get; }
 
     public void OpenFile(string filePath)
     {

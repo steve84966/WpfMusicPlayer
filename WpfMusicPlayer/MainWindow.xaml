@@ -79,9 +79,11 @@
                     <Button Grid.Column="0" Command="{Binding OpenCommand}" Content="&#x1F4C2; Open" HorizontalAlignment="Left" VerticalAlignment="Center" FontSize="16" Foreground="White" Background="#444444" Padding="15,8" BorderThickness="0" Cursor="Hand" Margin="10,0,0,0"/>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Button Command="{Binding PlayModeCommand}" Content="🔀" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0"/>
                         <Button Command="{Binding PrevCommand}" Content="&#x23EE;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0"/>
                         <Button Command="{Binding PlayPauseCommand}" Content="{Binding PlayPauseContent}" FontSize="28" Margin="10,0" Width="60" Height="60" Background="#0078D7" Foreground="White" BorderThickness="0" />
                         <Button Command="{Binding NextCommand}" Content="&#x23ED;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0"/>
+                        <Button Command="{Binding TranslateCommand}" Content="译" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0"/>
                     </StackPanel>
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
