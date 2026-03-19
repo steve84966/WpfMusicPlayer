@@ -1,4 +1,5 @@
-﻿using System.Windows;
+﻿using System.ComponentModel;
+using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -24,6 +25,7 @@ namespace WpfMusicPlayer
             DataContext = new MainViewModel(new FileDialogService());
             AtlTraceRedirectManager.Init();
             SourceInitialized += OnSourceInitialized;
+            ViewModel.PropertyChanged += ViewModel_PropertyChanged;
         }
 
         private void OnSourceInitialized(object? sender, EventArgs e)
@@ -31,10 +33,79 @@ namespace WpfMusicPlayer
             GaussianBlueHelper.EnableBlur(this);
         }
 
+        private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(MainViewModel.CurrentLyricIndex)) return;
+            var index = ViewModel.CurrentLyricIndex;
+            if (index < 0) return;
+
+            ScrollLyricToCenter(LandscapeLyricsList, index);
+            ScrollLyricToCenter(PortraitLyricsList, index);
+        }
+
+        private static void ScrollLyricToCenter(ListBox listBox, int index)
+        {
+            if (index < 0 || index >= listBox.Items.Count) return;
+
+            listBox.SelectedIndex = index;
+            listBox.UpdateLayout();
+
+            var container = (FrameworkElement?)listBox.ItemContainerGenerator.ContainerFromIndex(index);
+            if (container == null) return;
+
+            var scrollViewer = FindParentScrollViewer(listBox);
+            if (scrollViewer == null) return;
+
+            var transform = container.TransformToAncestor(scrollViewer);
+            var itemPosition = transform.Transform(new Point(0, 0));
+
+            var itemCenter = itemPosition.Y + container.ActualHeight / 2;
+            var viewportCenter = scrollViewer.ViewportHeight / 2;
+            var targetOffset = scrollViewer.VerticalOffset + itemCenter - viewportCenter;
+
+            ScrollAnimationHelper.AnimateScrollToVerticalOffset(
+                scrollViewer, targetOffset, TimeSpan.FromMilliseconds(250));
+        }
+
+        private static ScrollViewer? FindParentScrollViewer(DependencyObject child)
+        {
+            var parent = VisualTreeHelper.GetParent(child);
+            while (parent != null)
+            {
+                if (parent is ScrollViewer sv) return sv;
+                parent = VisualTreeHelper.GetParent(parent);
+            }
+            return null;
+        }
+
         private void MainWindow_Closed(object sender, EventArgs e)
         {
             ViewModel.OnWindowClosed();
             ViewModel.Dispose();
+        }
+
+        private void LyricsList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is not ListBox) return;
+
+            var source = e.OriginalSource as DependencyObject;
+            while (source is not null and not ListBoxItem)
+                source = VisualTreeHelper.GetParent(source);
+
+            if (source is ListBoxItem { DataContext: LyricLineViewModel lyric })
+                ViewModel.SeekToLyric(lyric);
+        }
+
+        private void LyricsList_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+        {
+            if (sender is not ListBox listBox) return;
+
+            // 转发到外层
+            var parentScrollViewer = FindParentScrollViewer(listBox);
+            if (parentScrollViewer == null) return;
+
+            parentScrollViewer.ScrollToVerticalOffset(parentScrollViewer.VerticalOffset - e.Delta);
+            e.Handled = true;
         }
 
         private void MainWindow_Drop(object sender, DragEventArgs e)
@@ -264,25 +335,23 @@ namespace WpfMusicPlayer
 
         private void SidebarMenu_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (sender is ListBox listBox && listBox.SelectedIndex >= 0)
-            {
-                var index = listBox.SelectedIndex;
-                listBox.SelectedIndex = -1;   // reset selection
-                SidebarMenuBottomList.SelectedIndex = -1;
-                CloseSidebar();
+            if (sender is not ListBox { SelectedIndex: >= 0 } listBox) return;
+            var index = listBox.SelectedIndex;
+            listBox.SelectedIndex = -1;   // reset selection
+            SidebarMenuBottomList.SelectedIndex = -1;
+            CloseSidebar();
 
-                switch (index)
-                {
-                    case 0: // Open File
-                        ViewModel.OpenCommand.Execute(null);
-                        break;
-                    case 1: // Playlist
-                        // TODO: implement playlist view
-                        break;
-                    case 2: // Settings
-                        // TODO: implement settings view
-                        break;
-                }
+            switch (index)
+            {
+                case 0: // Open File
+                    ViewModel.OpenCommand.Execute(null);
+                    break;
+                case 1: // Playlist
+                    // TODO: implement playlist view
+                    break;
+                case 2: // Settings
+                    // TODO: implement settings view
+                    break;
             }
         }
 

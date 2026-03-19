@@ -15,6 +15,7 @@ public class MainViewModel : ViewModelBase, IDisposable
     private readonly SynchronizationContext _syncContext;
     private MusicPlayer _musicPlayer;
     private string? _currentFilePath;
+    private LrcFileController? _lrcFileController;
 
     public MainViewModel(IFileDialogService fileDialogService)
     {
@@ -28,7 +29,7 @@ public class MainViewModel : ViewModelBase, IDisposable
         PrevCommand = new RelayCommand(() => { });
         NextCommand = new RelayCommand(() => { });
         PlayModeCommand = new RelayCommand(() => { });
-        TranslateCommand = new RelayCommand(() => { });
+        TranslateCommand = new RelayCommand(OnToggleTranslation, () => HasTranslationAvailable);
     }
 
     public string SongTitle
@@ -91,9 +92,27 @@ public class MainViewModel : ViewModelBase, IDisposable
         private set => SetProperty(ref field, value);
     } = "\u25B6";
 
-    public ObservableCollection<string> Lyrics { get; } = [];
+    public ObservableCollection<LyricLineViewModel> Lyrics { get; } = [];
+
+    public int CurrentLyricIndex
+    {
+        get;
+        private set => SetProperty(ref field, value);
+    } = -1;
 
     public bool IsDraggingSlider { get; set; }
+
+    public bool IsTranslationVisible
+    {
+        get;
+        private set => SetProperty(ref field, value);
+    } = true;
+
+    public bool HasTranslationAvailable
+    {
+        get;
+        private set => SetProperty(ref field, value);
+    }
 
     public ICommand PlayPauseCommand { get; }
     public ICommand OpenCommand { get; }
@@ -125,6 +144,29 @@ public class MainViewModel : ViewModelBase, IDisposable
             _musicPlayer.SeekToPosition(targetTime, true);
         });
         
+        if (isPlaying)
+        {
+            _musicPlayer.Start();
+        }
+
+        await Task.Delay(200);
+        IsDraggingSlider = false;
+    }
+
+    public async void SeekToLyric(LyricLineViewModel lyric)
+    {
+        if (!_musicPlayer.IsInitialized() || lyric.TimeMs < 0) return;
+
+        var targetTimeSec = lyric.TimeMs / 1000f;
+        var isPlaying = _musicPlayer.IsPlaying();
+
+        IsDraggingSlider = true;
+
+        await Task.Run(() =>
+        {
+            _musicPlayer.SeekToPosition(targetTimeSec, true);
+        });
+
         if (isPlaying)
         {
             _musicPlayer.Start();
@@ -191,6 +233,26 @@ public class MainViewModel : ViewModelBase, IDisposable
             
             ProgressValue = time;
             CurrentTime = FormatTime(time);
+            if (_lrcFileController == null) return;
+            _lrcFileController.SetTimeStamp((int)(time * 1000));
+            var newIndex = _lrcFileController.GetCurrentLrcNodeIndex();
+
+            if (newIndex != CurrentLyricIndex && newIndex >= 0 && newIndex < Lyrics.Count)
+            {
+                if (CurrentLyricIndex >= 0 && CurrentLyricIndex < Lyrics.Count)
+                {
+                    Lyrics[CurrentLyricIndex].IsHighlighted = false;
+                    Lyrics[CurrentLyricIndex].Progress = 0;
+                }
+                CurrentLyricIndex = newIndex;
+                Lyrics[CurrentLyricIndex].IsHighlighted = true;
+            }
+
+            if (CurrentLyricIndex >= 0 && CurrentLyricIndex < Lyrics.Count
+                && Lyrics[CurrentLyricIndex].IsProgressEnabled)
+            {
+                Lyrics[CurrentLyricIndex].Progress = _lrcFileController.GetLrcPercentage(CurrentLyricIndex);
+            }
         }, null);
     }
 
@@ -212,6 +274,11 @@ public class MainViewModel : ViewModelBase, IDisposable
             ProgressValue = 0;
             CurrentTime = "0:00";
         }, null);
+    }
+
+    private void OnToggleTranslation()
+    {
+        IsTranslationVisible = !IsTranslationVisible;
     }
 
     private void OnPlayPause()
@@ -256,6 +323,8 @@ public class MainViewModel : ViewModelBase, IDisposable
     {
         var lyricsStr = _musicPlayer.GetID3Lyric();
         Lyrics.Clear();
+        CurrentLyricIndex = -1;
+        HasTranslationAvailable = false;
 
         if (!string.IsNullOrEmpty(lyricsStr))
         {
@@ -295,19 +364,40 @@ public class MainViewModel : ViewModelBase, IDisposable
             }
         }
 
-        Lyrics.Add("暂无歌词");
+        _lrcFileController = null;
+        Lyrics.Add(new LyricLineViewModel("暂无歌词"));
     }
 
     private void ParseAndAddLocalLyric(string content)
     {
-        var lyricController = new LrcFileController();
+        _lrcFileController?.Dispose();
+        _lrcFileController  = new LrcFileController();
         
-        lyricController.ParseLrcStream(content);
-        if (!lyricController.Valid()) return;
-        for (var i = 0; i < lyricController.GetLrcNodeCount(); ++i)
+        _lrcFileController.ParseLrcStream(content);
+        _lrcFileController.SetSongDuration(_musicPlayer.GetMusicTimeLength());
+        if (!_lrcFileController.Valid()) return;
+
+        var hasTranslation = _lrcFileController.IsAuxiliaryInfoEnabled(LrcAuxiliaryInfo.Translation);
+        HasTranslationAvailable = hasTranslation;
+
+        for (var i = 0; i < _lrcFileController.GetLrcNodeCount(); ++i)
         {
-            var lyricIndex = lyricController.GetLrcLineAuxIndex(i, LrcAuxiliaryInfo.Lyric);
-            Lyrics.Add(lyricController.GetLrcLineAt(i, lyricIndex));
+            var lyricIndex = _lrcFileController.GetLrcLineAuxIndex(i, LrcAuxiliaryInfo.Lyric);
+            var timeMs = _lrcFileController.GetLrcNodeTimeMs(i);
+            var lyricText = _lrcFileController.GetLrcLineAt(i, lyricIndex);
+
+            string? translation = null;
+            if (hasTranslation)
+            {
+                var transIndex = _lrcFileController.GetLrcLineAuxIndex(i, LrcAuxiliaryInfo.Translation);
+                if (transIndex >= 0)
+                    translation = _lrcFileController.GetLrcLineAt(i, transIndex);
+            }
+
+            Lyrics.Add(new LyricLineViewModel(lyricText, timeMs, translation)
+            {
+                IsProgressEnabled = _lrcFileController.IsPercentageEnabled(i)
+            });
         }
     }
 

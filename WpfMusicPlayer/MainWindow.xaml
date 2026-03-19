@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:WpfMusicPlayer.ViewModels"
+        xmlns:helpers="clr-namespace:WpfMusicPlayer.Helpers"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
         Title="WpfMusicPlayer" Height="600" Width="800"
@@ -19,6 +20,69 @@
     </WindowChrome.WindowChrome>
 
     <Window.Resources>
+        <helpers:KaraokeClipConverter x:Key="KaraokeClipConverter"/>
+
+        <!-- Dark-theme scrollbar for lyrics area -->
+        <Style x:Key="LyricsScrollBarThumb" TargetType="Thumb">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="IsTabStop" Value="False"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border x:Name="ThumbBorder" Background="#40FFFFFF" CornerRadius="3"
+                                Margin="1"/>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ThumbBorder" Property="Background" Value="#60FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="ThumbBorder" Property="Background" Value="#80FFFFFF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LyricsScrollBarStyle" TargetType="ScrollBar">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Width" Value="8"/>
+            <Setter Property="MinWidth" Value="8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Grid Background="Transparent">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource LyricsScrollBarThumb}"/>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="LyricsScrollViewerStyle" TargetType="ScrollViewer">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollViewer">
+                        <Grid>
+                            <ScrollContentPresenter/>
+                            <ScrollBar x:Name="PART_VerticalScrollBar"
+                                       HorizontalAlignment="Right"
+                                       Orientation="Vertical"
+                                       Style="{StaticResource LyricsScrollBarStyle}"
+                                       Maximum="{TemplateBinding ScrollableHeight}"
+                                       ViewportSize="{TemplateBinding ViewportHeight}"
+                                       Value="{TemplateBinding VerticalOffset}"
+                                       Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"/>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="SidebarMenuItemStyle" TargetType="ListBoxItem">
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="FontSize" Value="14"/>
@@ -46,6 +110,155 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <DataTemplate x:Key="LyricItemTemplate" DataType="{x:Type vm:LyricLineViewModel}">
+            <StackPanel Margin="0,8">
+                <Grid>
+                    <!-- Base lyric text -->
+                    <TextBlock Text="{Binding Text}" TextAlignment="Center" TextWrapping="Wrap">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#88DDDDDD"/>
+                                <Setter Property="FontSize" Value="16"/>
+                                <Setter Property="FontWeight" Value="Normal"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
+                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="FontSize"
+                                                                     To="22" Duration="0:0:0.25">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <CubicEase EasingMode="EaseOut"/>
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                        <DataTrigger.ExitActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="FontSize"
+                                                                     To="16" Duration="0:0:0.25">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <CubicEase EasingMode="EaseOut"/>
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.ExitActions>
+                                    </DataTrigger>
+                                    <!-- When karaoke is active, dim the base so the white overlay stands out -->
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsHighlighted}" Value="True"/>
+                                            <Condition Binding="{Binding IsProgressEnabled}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Foreground" Value="#AADDDDDD"/>
+                                    </MultiDataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <!-- Karaoke white overlay – clipped to the played portion (sub-character precision) -->
+                    <TextBlock Text="{Binding Text}" TextAlignment="Center" TextWrapping="Wrap"
+                               Foreground="White" IsHitTestVisible="False">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="FontSize" Value="16"/>
+                                <Setter Property="FontWeight" Value="Normal"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                        <DataTrigger.EnterActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="FontSize"
+                                                                     To="22" Duration="0:0:0.25">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <CubicEase EasingMode="EaseOut"/>
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.EnterActions>
+                                        <DataTrigger.ExitActions>
+                                            <BeginStoryboard>
+                                                <Storyboard>
+                                                    <DoubleAnimation Storyboard.TargetProperty="FontSize"
+                                                                     To="16" Duration="0:0:0.25">
+                                                        <DoubleAnimation.EasingFunction>
+                                                            <CubicEase EasingMode="EaseOut"/>
+                                                        </DoubleAnimation.EasingFunction>
+                                                    </DoubleAnimation>
+                                                </Storyboard>
+                                            </BeginStoryboard>
+                                        </DataTrigger.ExitActions>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                        <TextBlock.Clip>
+                            <MultiBinding Converter="{StaticResource KaraokeClipConverter}">
+                                <Binding Path="Progress"/>
+                                <Binding Path="Text"/>
+                                <Binding Path="ActualWidth" RelativeSource="{RelativeSource Self}"/>
+                                <Binding Path="FontSize" RelativeSource="{RelativeSource Self}"/>
+                                <Binding Path="FontWeight" RelativeSource="{RelativeSource Self}"/>
+                                <Binding RelativeSource="{RelativeSource Self}"/>
+                            </MultiBinding>
+                        </TextBlock.Clip>
+                    </TextBlock>
+                </Grid>
+                <TextBlock Text="{Binding Translation}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,2,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="#66DDDDDD"/>
+                            <Setter Property="FontSize" Value="13"/>
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <MultiDataTrigger>
+                                    <MultiDataTrigger.Conditions>
+                                        <Condition Binding="{Binding HasTranslation}" Value="True"/>
+                                        <Condition Binding="{Binding DataContext.IsTranslationVisible, RelativeSource={RelativeSource AncestorType=Window}}" Value="True"/>
+                                    </MultiDataTrigger.Conditions>
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </MultiDataTrigger>
+                                <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
+                                    <Setter Property="Foreground" Value="#BBDDDDDD"/>
+                                    <DataTrigger.EnterActions>
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetProperty="FontSize"
+                                                                 To="15" Duration="0:0:0.25">
+                                                    <DoubleAnimation.EasingFunction>
+                                                        <CubicEase EasingMode="EaseOut"/>
+                                                    </DoubleAnimation.EasingFunction>
+                                                </DoubleAnimation>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </DataTrigger.EnterActions>
+                                    <DataTrigger.ExitActions>
+                                        <BeginStoryboard>
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetProperty="FontSize"
+                                                                 To="13" Duration="0:0:0.25">
+                                                    <DoubleAnimation.EasingFunction>
+                                                        <CubicEase EasingMode="EaseOut"/>
+                                                    </DoubleAnimation.EasingFunction>
+                                                </DoubleAnimation>
+                                            </Storyboard>
+                                        </BeginStoryboard>
+                                    </DataTrigger.ExitActions>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </StackPanel>
+        </DataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -123,16 +336,17 @@
                 </StackPanel>
 
                 <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Disabled"
-                              VerticalScrollBarVisibility="Hidden" Margin="20,0,0,0">
+                              VerticalScrollBarVisibility="Auto" Margin="20,0,0,0"
+                              Style="{StaticResource LyricsScrollViewerStyle}">
                     <ScrollViewer.RenderTransform>
                         <TranslateTransform x:Name="LandscapeLyricsTranslate"/>
                     </ScrollViewer.RenderTransform>
-                    <ListBox ItemsSource="{Binding Lyrics}" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Center" VerticalContentAlignment="Center">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" Foreground="#DDDDDD" FontSize="16" Margin="0,8" TextAlignment="Center"/>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
+                    <ListBox x:Name="LandscapeLyricsList" ItemsSource="{Binding Lyrics}" Background="Transparent" BorderThickness="0"
+                            HorizontalContentAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                            ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                            PreviewMouseLeftButtonUp="LyricsList_PreviewMouseLeftButtonUp"
+                            PreviewMouseWheel="LyricsList_PreviewMouseWheel"
+                            ItemTemplate="{StaticResource LyricItemTemplate}">
                     </ListBox>
                 </ScrollViewer>
             </Grid>
@@ -144,18 +358,18 @@
                 </Grid.RowDefinitions>
 
                 <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled"
-                              VerticalScrollBarVisibility="Hidden">
+                              VerticalScrollBarVisibility="Auto"
+                              Style="{StaticResource LyricsScrollViewerStyle}">
                     <ScrollViewer.RenderTransform>
                         <TranslateTransform x:Name="PortraitLyricsTranslate"/>
                     </ScrollViewer.RenderTransform>
-                    <ListBox ItemsSource="{Binding Lyrics}" Background="Transparent" BorderThickness="0"
-                             HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                             HorizontalAlignment="Stretch">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" Foreground="#DDDDDD" FontSize="16" Margin="0,8" TextAlignment="Center"/>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
+                    <ListBox x:Name="PortraitLyricsList" ItemsSource="{Binding Lyrics}" Background="Transparent" BorderThickness="0"
+                             HorizontalContentAlignment="Stretch"
+                             HorizontalAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                             PreviewMouseLeftButtonUp="LyricsList_PreviewMouseLeftButtonUp"
+                             PreviewMouseWheel="LyricsList_PreviewMouseWheel"
+                             ItemTemplate="{StaticResource LyricItemTemplate}">
                     </ListBox>
                 </ScrollViewer>
 
@@ -223,11 +437,146 @@
                         <Button x:Name="OpenButton" Grid.Column="0" Command="{Binding OpenCommand}" Content="&#x1F4C2; Open" HorizontalAlignment="Left" VerticalAlignment="Center" FontSize="16" Foreground="White" Background="#444444" Padding="15,8" BorderThickness="0" Cursor="Hand" Margin="10,0,0,0"/>
 
                         <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Button Command="{Binding PlayModeCommand}" Content="🔀" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0"/>
-                            <Button Command="{Binding PrevCommand}" Content="&#x23EE;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0"/>
-                            <Button Command="{Binding PlayPauseCommand}" Content="{Binding PlayPauseContent}" FontSize="28" Margin="10,0" Width="60" Height="60" Background="#0078D7" Foreground="White" BorderThickness="0" />
-                            <Button Command="{Binding NextCommand}" Content="&#x23ED;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0"/>
-                            <Button Command="{Binding TranslateCommand}" Content="译" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0"/>
+                            <Button Command="{Binding PlayModeCommand}" Content="🔀" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6">
+                                                        <TextBlock Text="&#x1F500;" FontSize="24" Foreground="{TemplateBinding Foreground}"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bg" Property="Background" Value="#20FFFFFF"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsPressed" Value="True">
+                                                            <Setter TargetName="Bg" Property="Background" Value="#30FFFFFF"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Command="{Binding PrevCommand}" Content="&#x23EE;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6">
+                                                        <TextBlock Text="&#x23EE;" FontSize="24" Foreground="{TemplateBinding Foreground}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bg" Property="Background" Value="#20FFFFFF"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsPressed" Value="True">
+                                                            <Setter TargetName="Bg" Property="Background" Value="#30FFFFFF"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Command="{Binding PlayPauseCommand}" Content="{Binding PlayPauseContent}" FontSize="28" Margin="10,0" Width="60" Height="60" Background="#0078D7" Foreground="White" BorderThickness="0" >
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6">
+                                                        <TextBlock Text="{TemplateBinding Content}" FontSize="{TemplateBinding FontSize}" Foreground="{TemplateBinding Foreground}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bg" Property="Background" Value="#20FFFFFF"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsPressed" Value="True">
+                                                            <Setter TargetName="Bg" Property="Background" Value="#30FFFFFF"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Command="{Binding NextCommand}" Content="&#x23ED;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6">
+                                                        <TextBlock Text="&#x23ED;" FontSize="24" Foreground="{TemplateBinding Foreground}"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bg" Property="Background" Value="#20FFFFFF"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsPressed" Value="True">
+                                                            <Setter TargetName="Bg" Property="Background" Value="#30FFFFFF"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Command="{Binding TranslateCommand}" FontSize="24" Margin="10,0" Width="50" Height="50" BorderThickness="0">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6">
+                                                        <TextBlock x:Name="BtnText" Text="译" FontSize="24" Foreground="{TemplateBinding Foreground}"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bg" Property="Background" Value="#20FFFFFF"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsPressed" Value="True">
+                                                            <Setter TargetName="Bg" Property="Background" Value="#30FFFFFF"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsEnabled" Value="False">
+                                                            <Setter TargetName="BtnText" Property="Foreground" Value="#40FFFFFF"/>
+                                                            <Setter TargetName="Bg" Property="Opacity" Value="0.5"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsTranslationVisible}" Value="True">
+                                                <Setter Property="Background" Value="#330078D7"/>
+                                                <Setter Property="Foreground" Value="#0078D7"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
                         </StackPanel>
 
                         <StackPanel x:Name="VolumePanel" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
