@@ -332,6 +332,17 @@ public class MainViewModel : ViewModelBase, IDisposable
             CurrentTime = "0:00";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Stopped);
             _smtcService.UpdateTimeline(TimeSpan.Zero, TimeSpan.FromSeconds(ProgressMaximum));
+            
+            
+            Lyrics[CurrentLyricIndex].IsHighlighted = false;
+            Lyrics[CurrentLyricIndex].Progress = 0;
+            CurrentLyricIndex = 0;
+            Lyrics[CurrentLyricIndex].IsHighlighted = true;
+            if (_lrcFileController != null && CurrentLyricIndex >= 0 && CurrentLyricIndex < Lyrics.Count
+                                       && Lyrics[CurrentLyricIndex].IsProgressEnabled)
+            {
+                Lyrics[CurrentLyricIndex].Progress = _lrcFileController.GetLrcPercentage(CurrentLyricIndex);
+            }
         }, null);
     }
 

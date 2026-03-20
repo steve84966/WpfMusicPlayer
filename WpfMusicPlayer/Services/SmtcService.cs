@@ -12,18 +12,13 @@ namespace WpfMusicPlayer.Services;
 public class SmtcService : ISmtcService
 {
     private SystemMediaTransportControls? _smtc;
-    private readonly Dispatcher _dispatcher;
+    private readonly Dispatcher _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
     private InMemoryRandomAccessStream? _thumbnailStream;
 
     public event Action? PlayRequested;
     public event Action? PauseRequested;
     public event Action? NextRequested;
     public event Action? PreviousRequested;
-
-    public SmtcService()
-    {
-        _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
-    }
 
     public void Initialize(IntPtr windowHandle)
     {
@@ -163,6 +158,7 @@ public class SmtcService : ISmtcService
         _smtc = null;
         _thumbnailStream?.Dispose();
         _thumbnailStream = null;
+        GC.SuppressFinalize(this);
     }
 }
 
