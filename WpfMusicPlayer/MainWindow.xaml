@@ -170,7 +170,27 @@
                             <Style TargetType="TextBlock">
                                 <Setter Property="FontSize" Value="16"/>
                                 <Setter Property="FontWeight" Value="Normal"/>
+                                <Setter Property="Visibility" Value="Collapsed"/>
                                 <Style.Triggers>
+                                    <MultiDataTrigger>
+                                        <MultiDataTrigger.Conditions>
+                                            <Condition Binding="{Binding IsHighlighted}" Value="True"/>
+                                            <Condition Binding="{Binding IsProgressEnabled}" Value="True"/>
+                                        </MultiDataTrigger.Conditions>
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Setter Property="Clip">
+                                            <Setter.Value>
+                                                <MultiBinding Converter="{StaticResource KaraokeClipConverter}">
+                                                    <Binding Path="Progress"/>
+                                                    <Binding Path="Text"/>
+                                                    <Binding Path="ActualWidth" RelativeSource="{RelativeSource Self}"/>
+                                                    <Binding Path="FontSize" RelativeSource="{RelativeSource Self}"/>
+                                                    <Binding Path="FontWeight" RelativeSource="{RelativeSource Self}"/>
+                                                    <Binding RelativeSource="{RelativeSource Self}"/>
+                                                </MultiBinding>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </MultiDataTrigger>
                                     <DataTrigger Binding="{Binding IsHighlighted}" Value="True">
                                         <Setter Property="FontWeight" Value="Bold"/>
                                         <DataTrigger.EnterActions>
@@ -201,16 +221,6 @@
                                 </Style.Triggers>
                             </Style>
                         </TextBlock.Style>
-                        <TextBlock.Clip>
-                            <MultiBinding Converter="{StaticResource KaraokeClipConverter}">
-                                <Binding Path="Progress"/>
-                                <Binding Path="Text"/>
-                                <Binding Path="ActualWidth" RelativeSource="{RelativeSource Self}"/>
-                                <Binding Path="FontSize" RelativeSource="{RelativeSource Self}"/>
-                                <Binding Path="FontWeight" RelativeSource="{RelativeSource Self}"/>
-                                <Binding RelativeSource="{RelativeSource Self}"/>
-                            </MultiBinding>
-                        </TextBlock.Clip>
                     </TextBlock>
                 </Grid>
                 <TextBlock Text="{Binding Translation}" TextAlignment="Center" TextWrapping="Wrap" Margin="0,2,0,0">

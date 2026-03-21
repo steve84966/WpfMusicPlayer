@@ -166,10 +166,13 @@ namespace WpfMusicPlayer
             if (shouldBePortrait == _isPortrait) return;
             _isPortrait = shouldBePortrait;
 
+            if (_isAnimationPlaying) return;
+            _isAnimationPlaying = true;
             AnimateLayoutSwitch(shouldBePortrait);
         }
 
-        private void AnimateLayoutSwitch(bool toPortrait)
+        private bool _isAnimationPlaying; 
+        private async void AnimateLayoutSwitch(bool toPortrait)
         {
             OpenButton.Visibility  = toPortrait ? Visibility.Collapsed : Visibility.Visible;
             VolumePanel.Visibility = toPortrait ? Visibility.Collapsed : Visibility.Visible;
@@ -251,7 +254,15 @@ namespace WpfMusicPlayer
                 outgoing.Opacity = 1;
             };
             outgoing.BeginAnimation(OpacityProperty, fadeOut);
-            ScrollLyricToCenter(_isPortrait ? PortraitLyricsList : LandscapeLyricsList, ViewModel.CurrentLyricIndex);
+            
+            await Task.Delay(300);
+
+            Dispatcher.BeginInvoke(() =>
+            {
+                ScrollLyricToCenter(
+                    _isPortrait ? PortraitLyricsList : LandscapeLyricsList,
+                    ViewModel.CurrentLyricIndex);
+            }, DispatcherPriority.Loaded);
         }
 
         private void ClearLayoutAnimations()
@@ -267,6 +278,7 @@ namespace WpfMusicPlayer
             ClearTransformAnimations(PortraitAlbumTranslate, PortraitAlbumScale);
             ClearTransformAnimations(PortraitSongInfoTranslate, null);
             ClearTransformAnimations(PortraitLyricsTranslate, null);
+            _isAnimationPlaying = false;
         }
 
         private static void ClearTransformAnimations(TranslateTransform t, ScaleTransform? s)

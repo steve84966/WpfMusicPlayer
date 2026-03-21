@@ -21,6 +21,15 @@ namespace WpfMusicPlayer.Helpers;
 /// </summary>
 public sealed class KaraokeClipConverter : IMultiValueConverter
 {
+    // Cache key: avoid redundant geometry rebuilds when only ActualWidth triggers re-evaluation
+    // but progress/text/font haven't actually changed.
+    private double _lastProgress;
+    private string? _lastText;
+    private double _lastFontSize;
+    private FontWeight _lastFontWeight;
+    private double _lastActualWidth;
+    private Geometry? _cachedResult;
+
     public object Convert(object[] values, Type targetType, object? parameter, CultureInfo culture)
     {
         if (values.Length < 6
@@ -29,8 +38,20 @@ public sealed class KaraokeClipConverter : IMultiValueConverter
             || values[2] is not double actualWidth
             || values[3] is not double fontSize
             || values[4] is not FontWeight fontWeight
-            || values[5] is not Visual visual || progress <= 0 || string.IsNullOrEmpty(text) || actualWidth <= 0)
+            || values[5] is not Visual visual
+            || progress <= 0 || string.IsNullOrEmpty(text) || actualWidth <= 0)
             return Geometry.Empty;
+
+        // Widen cache tolerance to avoid expensive recomputation during window resize
+        if (_cachedResult != null
+            && Math.Abs(progress - _lastProgress) < 0.0001
+            && text == _lastText
+            && Math.Abs(fontSize - _lastFontSize) < 0.01
+            && fontWeight == _lastFontWeight
+            && Math.Abs(actualWidth - _lastActualWidth) < 5.0)
+        {
+            return _cachedResult;
+        }
 
         var pixelsPerDip = VisualTreeHelper.GetDpi(visual).PixelsPerDip;
         var typeface = new Typeface(
@@ -52,48 +73,61 @@ public sealed class KaraokeClipConverter : IMultiValueConverter
             TextAlignment = TextAlignment.Center
         };
 
+        Geometry result;
+
         if (progress >= 1.0)
         {
             var full = ft.BuildHighlightGeometry(new Point(0, 0), 0, text.Length);
-            if (full == null) return Geometry.Empty;
-            full.Freeze();
-            return full;
+            result = full ?? Geometry.Empty;
         }
-
-        var charProgress = progress * text.Length;
-        var fullChars = (int)charProgress;
-        var subProgress = charProgress - fullChars;
-
-        var group = new GeometryGroup { FillRule = FillRule.Nonzero };
-
-        if (fullChars > 0)
+        else
         {
-            var fullGeo = ft.BuildHighlightGeometry(new Point(0, 0), 0, fullChars);
-            if (fullGeo != null)
-                group.Children.Add(fullGeo);
-        }
+            var charProgress = progress * text.Length;
+            var fullChars = (int)charProgress;
+            var subProgress = charProgress - fullChars;
 
-        if (fullChars < text.Length && subProgress > 0.001)
-        {
-            var charGeo = ft.BuildHighlightGeometry(new Point(0, 0), fullChars, 1);
-            if (charGeo != null)
+            var group = new GeometryGroup { FillRule = FillRule.Nonzero };
+
+            if (fullChars > 0)
             {
-                var bounds = charGeo.Bounds;
-                if (!bounds.IsEmpty && bounds.Width > 0)
+                var fullGeo = ft.BuildHighlightGeometry(new Point(0, 0), 0, fullChars);
+                if (fullGeo != null)
+                    group.Children.Add(fullGeo);
+            }
+
+            if (fullChars < text.Length && subProgress > 0.001)
+            {
+                var charGeo = ft.BuildHighlightGeometry(new Point(0, 0), fullChars, 1);
+                if (charGeo != null)
                 {
-                    var partialRect = new RectangleGeometry(
-                        new Rect(bounds.Left, bounds.Top,
-                                 bounds.Width * subProgress, bounds.Height));
-                    var clipped = Geometry.Combine(
-                        charGeo, partialRect,
-                        GeometryCombineMode.Intersect, null);
-                    group.Children.Add(clipped);
+                    var bounds = charGeo.Bounds;
+                    if (!bounds.IsEmpty && bounds.Width > 0)
+                    {
+                        var partialRect = new RectangleGeometry(
+                            new Rect(bounds.Left, bounds.Top,
+                                bounds.Width * subProgress, bounds.Height));
+                        var clipped = Geometry.Combine(
+                            charGeo, partialRect,
+                            GeometryCombineMode.Intersect, null);
+                        group.Children.Add(clipped);
+                    }
                 }
             }
+
+            result = group;
         }
 
-        group.Freeze();
-        return group;
+        result.Freeze();
+
+        // Update cache
+        _lastProgress = progress;
+        _lastText = text;
+        _lastFontSize = fontSize;
+        _lastFontWeight = fontWeight;
+        _lastActualWidth = actualWidth;
+        _cachedResult = result;
+
+        return result;
     }
 
     public object[] ConvertBack(object value, Type[] targetTypes, object? parameter, CultureInfo culture)
