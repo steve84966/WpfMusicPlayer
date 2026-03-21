@@ -4,6 +4,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Threading;
 using MusicPlayerLibrary;
 using WpfMusicPlayer.Helpers;
 using WpfMusicPlayer.Services;
@@ -41,9 +42,19 @@ namespace WpfMusicPlayer
 
         private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName != nameof(MainViewModel.CurrentLyricIndex)) return;
             var index = ViewModel.CurrentLyricIndex;
             if (index < 0) return;
+            if (e.PropertyName == nameof(MainViewModel.IsTranslationVisible))
+            {
+                Dispatcher.BeginInvoke(delegate
+                {
+                    if (ViewModel.CurrentLyricIndex < 0) return;
+                    ScrollLyricToCenter(_isPortrait ? PortraitLyricsList : LandscapeLyricsList, index);
+                }, DispatcherPriority.Loaded);
+                return;
+            }
+            
+            if (e.PropertyName != nameof(MainViewModel.CurrentLyricIndex)) return;
 
             ScrollLyricToCenter(LandscapeLyricsList, index);
             ScrollLyricToCenter(PortraitLyricsList, index);
@@ -240,6 +251,7 @@ namespace WpfMusicPlayer
                 outgoing.Opacity = 1;
             };
             outgoing.BeginAnimation(OpacityProperty, fadeOut);
+            ScrollLyricToCenter(_isPortrait ? PortraitLyricsList : LandscapeLyricsList, ViewModel.CurrentLyricIndex);
         }
 
         private void ClearLayoutAnimations()

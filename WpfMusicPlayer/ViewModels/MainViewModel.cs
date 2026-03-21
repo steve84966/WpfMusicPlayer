@@ -333,7 +333,7 @@ public class MainViewModel : ViewModelBase, IDisposable
             _smtcService.UpdatePlaybackStatus(PlaybackState.Stopped);
             _smtcService.UpdateTimeline(TimeSpan.Zero, TimeSpan.FromSeconds(ProgressMaximum));
             
-            
+            if (CurrentLyricIndex < 0 || CurrentLyricIndex >= Lyrics.Count) return;
             Lyrics[CurrentLyricIndex].IsHighlighted = false;
             Lyrics[CurrentLyricIndex].Progress = 0;
             CurrentLyricIndex = 0;
