@@ -131,7 +131,14 @@ namespace WpfMusicPlayer
             var files = (string[]?)e.Data.GetData(DataFormats.FileDrop);
             if (files?.Length > 0)
             {
-                ViewModel.OpenFile(files[0]);
+                try
+                {
+                    ViewModel.OpenFile(files[0]);
+                }
+                catch (Exception ex)
+                {
+                    WpfMessageBox.Show($"{ex.Message}\n{files[0]}", "Error", WpfMessageBoxIcon.Error);
+                }
             }
         }
 

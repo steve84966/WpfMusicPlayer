@@ -381,12 +381,25 @@ public class MainViewModel : ViewModelBase, IDisposable
         {
             await Task.Run(() => OpenFile(path));
             _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
-
         }
-        catch (ArgumentException ex)
+        catch (Exception ex)
         {
             WpfMessageBox.Show($"{ex.Message}\n{path}", "Error",
                 WpfMessageBoxIcon.Error);
+            // reset state
+            AlbumCoverImage = null;
+            SongTitle = "Unknown Title";
+            ArtistName = "Unknown Artist";
+            ProgressValue = 0;
+            CurrentTime = "0:00";
+            _smtcService.UpdatePlaybackStatus(PlaybackState.Stopped);
+            _smtcService.UpdateTimeline(TimeSpan.Zero, TimeSpan.FromSeconds(ProgressMaximum));
+            _smtcService.UpdateTextMetadata("Unknown Title", "Unknown Artist");
+            _lrcFileController?.Dispose();
+            _lrcFileController = null;
+            Lyrics.Clear();
+            CurrentLyricIndex = -1;
+            HasTranslationAvailable = false;
         }
     }
 

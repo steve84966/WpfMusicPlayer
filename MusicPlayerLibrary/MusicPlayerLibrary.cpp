@@ -68,6 +68,7 @@ inline int MusicPlayerLibrary::MusicPlayerNative::load_audio_context(const CStri
 	// 打开文件流
 	// std::ios::sync_with_stdio(false);
 	file_stream = new CFile();
+	bool is_ncm = false;
 	file_extension = file_extension_in;
 	if (!file_stream->Open(audio_filename, CFile::modeRead | CFile::shareDenyWrite))
 	{
@@ -75,7 +76,23 @@ inline int MusicPlayerLibrary::MusicPlayerNative::load_audio_context(const CStri
 		delete file_stream;
 		return -1;
 	}
-	if (file_extension_in == _T("ncm"))
+	char magic[10];
+	if (const int ret = file_stream->Read(magic, 8); ret != 8)
+	{
+		ATLTRACE("err: failed to read magic bytes\n");
+		delete file_stream;
+		return -1;
+	}
+	magic[9] = '\0';
+	ATLTRACE("info: magic bytes: %s\n", magic);
+	if (CStringA(magic) == "CTENFDAM")
+	{
+		ATLTRACE("info: found ncm header\n");
+		is_ncm = true;
+	}
+	file_stream->SeekToBegin();
+
+	if (file_extension_in.CompareNoCase(_T("ncm")) == 0 || is_ncm)
 	{
 		// AfxMessageBox(_T("即将尝试解码网易云音乐加密文件。\n本软件不对解密算法可用性和解密结果做保证。"), MB_ICONINFORMATION);
 		CFile* mem_file = nullptr;
@@ -1308,7 +1325,8 @@ int MusicPlayerLibrary::MusicPlayerNative::initialize_audio_fifo(AVSampleFormat 
 	audio_fifo = av_audio_fifo_alloc(sample_fmt, channels, nb_samples);
 	if (!audio_fifo)
 	{
-		AfxMessageBox(_T("err: could not allocate audio fifo!"), MB_ICONERROR);
+		// AfxMessageBox(_T("err: could not allocate audio fifo!"), MB_ICONERROR);
+		FFMPEG_CRITICAL_ERROR(-1);
 		return -1;
 	}
 	return 0;
@@ -1487,7 +1505,7 @@ void MusicPlayerLibrary::MusicPlayerNative::dialog_ffmpeg_critical_error(int err
 	CString res{};
 	res.Format(_T("%s (file: %s, line: %d)\n"), CString(buf).GetString(), CString(file).GetString(), line);
 	message += res;
-	AfxMessageBox(message, MB_ICONERROR);
+	throw gcnew System::InvalidOperationException(msclr::interop::marshal_as<String^>(message.GetString()));
 }
 
 // this stack_unwind function is not useful, removed.
@@ -1656,11 +1674,13 @@ bool MusicPlayerLibrary::MusicPlayerNative::IsPlaying()
 void MusicPlayerLibrary::MusicPlayerNative::OpenFile(const CString& fileName, const CString& file_extension_in)
 {
 	if (load_audio_context(fileName, file_extension_in)) {
-		AfxMessageBox(_T("err: load file failed, please check trace message!"), MB_ICONERROR);
+		// AfxMessageBox(_T("err: load file failed, please check trace message!"), MB_ICONERROR);
+		throw gcnew System::InvalidOperationException("Load file failed, please re-run in terminal and check trace message!");
 		return;
 	}
 	if (initialize_audio_engine()) {
-		AfxMessageBox(_T("err: audio engine initialize failed!"), MB_ICONERROR);
+		// AfxMessageBox(_T("err: audio engine initialize failed!"), MB_ICONERROR);
+		throw gcnew System::InvalidOperationException("Audio engine initialize failed!");
 		return;
 	};
 	managed_music_player->ProcessEvent(WM_PLAYER_FILE_INIT, 0, 0);
@@ -2144,14 +2164,16 @@ IntPtr MusicPlayerLibrary::SmtcInteropHelper::GetSmtcForWindow(IntPtr hWnd)
 
 void MusicPlayerLibrary::AtlTraceRedirectManager::Init()
 {
-	if (::AttachConsole(ATTACH_PARENT_PROCESS)) {
-		FILE* unused;
-		if (freopen_s(&unused, "CONOUT$", "w", stdout)) {
-			UNREFERENCED_PARAMETER(
-				_dup2(_fileno(stdout), 1)
-			);
-		}
+	wchar_t cwd[MAX_PATH]{};
+	if (GetCurrentDirectoryW(MAX_PATH, cwd) == 0)
+	{
+		cwd[0] = _T('.');
+		cwd[1] = _T('\0');
 	}
-	m_pRedirector = new AtlTraceRedirect(stdout, false);
+
+	CString logPath;
+	logPath.Format(_T("%s\\WpfMusicPlayer.log"), cwd);
+
+	m_pRedirector = new AtlTraceRedirect(logPath.GetString(), true); // 追加写入
 	AtlTraceRedirect::SetAtlTraceRedirector(m_pRedirector);
 }

@@ -363,14 +363,14 @@ namespace MusicPlayerLibrary {
 
 		~MusicPlayer() {
 			delete native_handle;
-			 native_handle = nullptr;
-			 OnPlayerFileInit = nullptr;
-			 OnPlayerAlbumArtInit = nullptr;
-			 OnPlayerStart = nullptr;
-			 OnPlayerPause = nullptr;
-			 OnPlayerStop = nullptr;
-			 OnPlayerTimeChange = nullptr;
-			 OnPlayerDestroy = nullptr;
+			native_handle = nullptr;
+			OnPlayerFileInit = nullptr;
+			OnPlayerAlbumArtInit = nullptr;
+			OnPlayerStart = nullptr;
+			OnPlayerPause = nullptr;
+			OnPlayerStop = nullptr;
+			OnPlayerTimeChange = nullptr;
+			OnPlayerDestroy = nullptr;
 		}
 	};
 
