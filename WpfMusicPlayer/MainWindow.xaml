@@ -10,6 +10,7 @@
         Title="WpfMusicPlayer" Height="600" Width="800"
         Background="Transparent"
         AllowDrop="True"
+        MinWidth="400" MinHeight="450"
         Drop="MainWindow_Drop"
         Closed="MainWindow_Closed"
         SizeChanged="MainWindow_SizeChanged">
