@@ -17,14 +17,16 @@ public class MainViewModel : ViewModelBase, IDisposable
     private MusicPlayer _musicPlayer;
     private string? _currentFilePath;
     private LrcFileController? _lrcFileController;
+    private int _sampleRate;
 
     public MainViewModel(IFileDialogService fileDialogService, ISmtcService smtcService)
     {
         _fileDialogService = fileDialogService;
         _smtcService = smtcService;
         _syncContext = SynchronizationContext.Current!;
-        _musicPlayer = new MusicPlayer();
         Equalizer = new EqualizerViewModel(ApplyEqualizerBand);
+        _sampleRate = 48000; // Studio quality
+        _musicPlayer = new MusicPlayer(_sampleRate);
         SubscribePlayerEvents();
         SubscribeSmtcEvents();
 
@@ -138,7 +140,7 @@ public class MainViewModel : ViewModelBase, IDisposable
     {
         _currentFilePath = filePath;
         _musicPlayer.Dispose();
-        _musicPlayer = new MusicPlayer();
+        _musicPlayer = new MusicPlayer(_sampleRate);
         SubscribePlayerEvents();
         _musicPlayer.OpenFile(filePath);
     }
@@ -209,6 +211,20 @@ public class MainViewModel : ViewModelBase, IDisposable
     {
         _musicPlayer.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    public async Task SetSampleRate(int sampleRate)
+    {
+        if (sampleRate < 8000 // Telephone quality
+            || sampleRate > 192000) // Above high-resolution audio
+        {
+            throw new ArgumentOutOfRangeException(nameof(sampleRate), "Sample rate must be between 8000 and 192000 Hz.");
+        }
+        _sampleRate = sampleRate;
+        if (_currentFilePath != null)
+        {
+            OpenFile( _currentFilePath );
+        }
     }
 
     private void SubscribePlayerEvents()

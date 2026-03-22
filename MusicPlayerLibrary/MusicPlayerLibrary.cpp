@@ -620,7 +620,7 @@ inline int MusicPlayerLibrary::MusicPlayerNative::initialize_audio_engine()
 		&swr_ctx,
 		&stereo_layout,              // 输出立体声
 		AV_SAMPLE_FMT_S16,
-		44100,
+		sample_rate,
 		&codec_context->ch_layout,
 		codec_context->sample_fmt,
 		codec_context->sample_rate,
@@ -663,7 +663,7 @@ inline int MusicPlayerLibrary::MusicPlayerNative::initialize_audio_engine()
 	// TODO: customizable output rate
 	wfx.wFormatTag = WAVE_FORMAT_PCM;                     // pcm格式
 	wfx.nChannels = 2;                                    // 音频通道数
-	wfx.nSamplesPerSec = 44100;                           // 采样率
+	wfx.nSamplesPerSec = sample_rate;                           // 采样率
 	wfx.wBitsPerSample = 16;  // xaudio2支持16-bit pcm，如果不符合格式的音频，使用swscale进行转码
 	wfx.nBlockAlign = (wfx.wBitsPerSample / 8) * wfx.nChannels; // 样本大小：样本大小(16-bit)*通道数
 	wfx.nAvgBytesPerSec = wfx.nSamplesPerSec * wfx.nBlockAlign; // 每秒钟解码多少字节，样本大小*采样率
@@ -1275,6 +1275,7 @@ void MusicPlayerLibrary::MusicPlayerNative::stop_audio_playback(int mode)
 	if (audio_player_worker_thread
 		&& audio_player_worker_thread->m_hThread != INVALID_HANDLE_VALUE) {
 			{
+				// fast enter critical section to set stop flag
 				CriticalSectionLock lock(audio_playback_section, true);
 				// EnterCriticalSection(audio_playback_section); <- this cause delay, spin wait instead
 				user_request_stop = true;
@@ -1778,6 +1779,15 @@ void MusicPlayerLibrary::MusicPlayerNative::SeekToPosition(float time, bool need
 	}
 }
 
+void MusicPlayerLibrary::MusicPlayerNative::SetSampleRate(int sample_rate)
+{
+	if (IsInitialized()) {
+		// Set sample rate after init is not supported.
+		throw gcnew System::InvalidOperationException("SetSampleRate is not supported after initialization!");
+	}
+	this->sample_rate = sample_rate;
+}
+
 void MusicPlayerLibrary::MusicPlayerNative::RegisterWritePCMBytesCallback(WriteRawPCMBytesCallback^ callback)
 {
 	this->write_raw_pcm_bytes_callback = callback;
@@ -1896,6 +1906,13 @@ MusicPlayerLibrary::MusicPlayerNative::~MusicPlayerNative()
 MusicPlayerLibrary::MusicPlayer::MusicPlayer()
 {
 	native_handle = new MusicPlayerNative();
+	native_handle->SetManagedPlayer(this);
+}
+
+MusicPlayerLibrary::MusicPlayer::MusicPlayer(int sample_rate)
+{
+	native_handle = new MusicPlayerNative();
+	native_handle->SetSampleRate(sample_rate);
 	native_handle->SetManagedPlayer(this);
 }
 

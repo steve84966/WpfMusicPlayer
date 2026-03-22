@@ -168,6 +168,7 @@ namespace MusicPlayerLibrary {
 		float message_interval = 16.67f, message_interval_timer = 0.0f;
 		size_t prev_decode_cycle_xaudio2_played_samples = 0;
 		CString id3_string_lyric;
+		int sample_rate = 0;
 
 		// managed variables
 		gcroot<MusicPlayer^> managed_music_player;
@@ -265,6 +266,7 @@ namespace MusicPlayerLibrary {
 		void Stop();
 		void SetMasterVolume(float volume);
 		void SeekToPosition(float time, bool need_stop);
+		void SetSampleRate(int sample_rate);
 		// int GetRawPCMBytes(uint8_t* buffer_out, int buffer_size) const;
 
 		// WritePCMBytesCallback:
@@ -309,6 +311,7 @@ namespace MusicPlayerLibrary {
 		property PlayerDestroyDelegate^ OnPlayerDestroy;
 	public:
 		MusicPlayer();
+		MusicPlayer(int sample_rate);
 
 	private:
 		void check_if_null();
