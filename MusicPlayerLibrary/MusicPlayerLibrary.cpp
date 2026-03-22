@@ -907,7 +907,7 @@ void MusicPlayerLibrary::MusicPlayerNative::audio_playback_worker_thread()
 			}
 		}
 
-		int out_samples = swr_convert(swr_ctx, &out_buffer, static_cast<int>(out_buffer_size),
+		int out_samples = swr_convert(swr_ctx, &out_buffer, xaudio2_play_frame_size,
 			fifo_buf, read_bytes); // pass actual read samples
 		av_freep(&fifo_buf[0]);
 		av_free(fifo_buf);
