@@ -1,23 +1,18 @@
-using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
-using System.Text;
-using System.Windows.Controls.Primitives;
-using System.Xml;
-using System.Xml.Linq;
 using System.Xml.Serialization;
-using static WpfMusicPlayer.Services.ConfigData;
+using WpfMusicPlayer.Models;
+using static WpfMusicPlayer.Models.ConfigData;
 
 namespace WpfMusicPlayer.Services
 {
-    public class ConfigRender
+    public class ConfigProvider : IConfigProvider
     {
-        private static readonly Lazy<ConfigRender> render = new Lazy<ConfigRender>(() => new ConfigRender());
-        public static ConfigRender Render => render.Value;
+        private static readonly Lazy<ConfigProvider> render = new Lazy<ConfigProvider>(() => new ConfigProvider());
+        public static ConfigProvider Render => render.Value;
 
-        private ConfigRender(string ConfigFileName = "config.xml") => Reload(ConfigFileName);
-        ~ConfigRender()
+        private ConfigProvider(string ConfigFileName = "config.xml") => Reload(ConfigFileName);
+        ~ConfigProvider()
         {
             WriteFile();
         }
@@ -77,7 +72,12 @@ namespace WpfMusicPlayer.Services
 
                     try
                     {
-                        ConfigData = (ConfigData)(new XmlSerializer(typeof(ConfigData)).Deserialize(File));
+                        var XmlSerializer = new XmlSerializer(typeof(ConfigData));
+                        ConfigData? XmlConfigData = (ConfigData?)XmlSerializer.Deserialize(File);
+                        if (XmlConfigData == null)
+                            return ErrorCode.ConfigFileError;
+
+                        ConfigData = XmlConfigData;
                     }
                     catch (InvalidOperationException)
                     {
@@ -119,7 +119,7 @@ namespace WpfMusicPlayer.Services
 
             return ErrorCode.NoError;
         }
-        private ErrorCode WriteFile(string ConfigFileName = "config.xml")
+        public ErrorCode WriteFile(string ConfigFileName = "config.xml")
         {
             try
             {

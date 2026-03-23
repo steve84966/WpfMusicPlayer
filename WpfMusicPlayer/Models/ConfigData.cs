@@ -1,6 +1,6 @@
 using System.Xml.Serialization;
 
-namespace WpfMusicPlayer.Services
+namespace WpfMusicPlayer.Models
 {
     [XmlRoot("settings")]
     public class ConfigData
