@@ -1,0 +1,25 @@
+<UserControl x:Class="WpfMusicPlayer.Views.SongInfoView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:WpfMusicPlayer.ViewModels"
+             xmlns:local="clr-namespace:WpfMusicPlayer.Views"
+             mc:Ignorable="d"
+             d:DataContext="{d:DesignInstance Type=vm:MainViewModel}">
+    <StackPanel>
+        <Viewbox StretchDirection="DownOnly"
+                 MaxHeight="{Binding TitleMaxHeight, RelativeSource={RelativeSource AncestorType=local:SongInfoView}}"
+                 HorizontalAlignment="Left"
+                 Margin="{Binding TitleBottomMargin, RelativeSource={RelativeSource AncestorType=local:SongInfoView}}">
+            <TextBlock Text="{Binding SongTitle}" Foreground="White"
+                       FontSize="{Binding TitleFontSize, RelativeSource={RelativeSource AncestorType=local:SongInfoView}}"
+                       FontWeight="Bold" TextWrapping="NoWrap"/>
+        </Viewbox>
+        <Viewbox StretchDirection="DownOnly"
+                 MaxHeight="{Binding ArtistMaxHeight, RelativeSource={RelativeSource AncestorType=local:SongInfoView}}"
+                 HorizontalAlignment="Left">
+            <TextBlock Text="{Binding ArtistName}" Foreground="#BBBBBB" FontSize="14" TextWrapping="NoWrap"/>
+        </Viewbox>
+    </StackPanel>
+</UserControl>

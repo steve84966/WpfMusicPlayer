@@ -2,10 +2,12 @@ using MusicPlayerLibrary;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Runtime;
+using System.Security.Cryptography;
 using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using WpfMusicPlayer.Helpers;
+using WpfMusicPlayer.Models;
 using WpfMusicPlayer.Services;
 
 namespace WpfMusicPlayer.ViewModels;
@@ -17,18 +19,21 @@ public class MainViewModel : ViewModelBase, IDisposable
     // 这里不要直接操作UI！！！
     private readonly IFileDialogService _fileDialogService;
     private readonly ISmtcService _smtcService;
+    private readonly ISongDatabaseService _songDatabase;
     private readonly SynchronizationContext _syncContext;
     private MusicPlayer _musicPlayer;
     private string? _currentFilePath;
+    private string? _currentMd5;
     private LrcFileController? _lrcFileController;
     private int _sampleRate;
     private bool _enableAutoPlay;
     private GCLatencyMode _previousLatencyMode;
 
-    public MainViewModel(IFileDialogService fileDialogService, ISmtcService smtcService)
+    public MainViewModel(IFileDialogService fileDialogService, ISmtcService smtcService, ISongDatabaseService songDatabase)
     {
         _fileDialogService = fileDialogService;
         _smtcService = smtcService;
+        _songDatabase = songDatabase;
         _syncContext = SynchronizationContext.Current!;
         Equalizer = new EqualizerViewModel(ApplyEqualizerBand);
         _sampleRate = 48000; // Studio quality
@@ -37,7 +42,7 @@ public class MainViewModel : ViewModelBase, IDisposable
         SubscribePlayerEvents();
         SubscribeSmtcEvents();
 
-        PlayPauseCommand = new RelayCommand(OnPlayPause);
+        PlayPauseCommand = new RelayCommand(OnPlayPause, () => !IsDecoding);
         OpenCommand = new RelayCommand(async () => await OnOpenAsync());
         PrevCommand = new RelayCommand(() => { });
         NextCommand = new RelayCommand(() => { });
@@ -150,6 +155,18 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     public bool IsFileDialogOpen { get; set; }
 
+    public bool IsDecoding
+    {
+        get;
+        private set
+        {
+            if (SetProperty(ref field, value))
+            {
+                CommandManager.InvalidateRequerySuggested();
+            }
+        }
+    }
+
     public ObservableCollection<PlaylistItemViewModel> PlaylistItems { get; } = [];
 
     public bool IsPlaylistVisible
@@ -169,14 +186,28 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     public void OpenFile(string filePath)
     {
-        _currentFilePath = filePath;
-        _musicPlayer.Dispose();
-        _musicPlayer = new MusicPlayer(_sampleRate);
-        SubscribePlayerEvents();
-        _musicPlayer.OpenFile(filePath);
-        if (!_enableAutoPlay)
+        var isNcm = Path.GetExtension(filePath).Equals(".ncm", StringComparison.OrdinalIgnoreCase);
+        if (isNcm)
         {
-            _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
+            _syncContext.Send(_ => IsDecoding = true, null);
+        }
+        try
+        {
+            _currentFilePath = filePath;
+            _currentMd5 = ComputeFileMd5(filePath);
+            _musicPlayer.Dispose();
+            _musicPlayer = new MusicPlayer(_sampleRate);
+            SubscribePlayerEvents();
+            _musicPlayer.OpenFile(filePath);
+            if (!_enableAutoPlay)
+            {
+                _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
+            }
+        }
+        catch
+        {
+            _syncContext.Send(_ => IsDecoding = false, null);
+            throw;
         }
     }
 
@@ -250,6 +281,7 @@ public class MainViewModel : ViewModelBase, IDisposable
     {
         GCSettings.LatencyMode = _previousLatencyMode;
         _musicPlayer.Dispose();
+        _songDatabase.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -295,12 +327,33 @@ public class MainViewModel : ViewModelBase, IDisposable
     {
         _syncContext.Post(_ =>
         {
+            IsDecoding = false;
             var length = _musicPlayer.GetMusicTimeLength();
             ProgressMaximum = length;
             TotalTime = FormatTime(length);
 
-            SongTitle = _musicPlayer.GetSongTitle() ?? "Unknown Title";
-            ArtistName = _musicPlayer.GetSongArtist() ?? "Unknown Artist";
+            var cached = _currentMd5 is not null ? _songDatabase.FindByMd5(_currentMd5) : null;
+            if (cached is not null)
+            {
+                // 优先使用数据库缓存
+                SongTitle = cached.Title;
+                ArtistName = cached.Artist;
+            }
+            else
+            {
+                SongTitle = _musicPlayer.GetSongTitle() ?? "Unknown Title";
+                ArtistName = _musicPlayer.GetSongArtist() ?? "Unknown Artist";
+
+                if (_currentMd5 is not null)
+                {
+                    _songDatabase.Upsert(new SongRecord
+                    {
+                        Md5 = _currentMd5,
+                        Title = SongTitle,
+                        Artist = ArtistName
+                    });
+                }
+            }
 
             AddToPlaylist();
 
@@ -322,14 +375,44 @@ public class MainViewModel : ViewModelBase, IDisposable
         {
             try
             {
-                AlbumCoverImage = image != null ? ConvertDrawingImageToWpfImage(image) : null;
+                var cached = _currentMd5 is not null ? _songDatabase.FindByMd5(_currentMd5) : null;
 
-                    var playlistItem = PlaylistItems.FirstOrDefault(p => p.FilePath == _currentFilePath);
-                    if (playlistItem != null)
-                        playlistItem.AlbumCover = AlbumCoverImage;
+                if (cached?.AlbumArt is { Length: > 0 })
+                {
+                    // 优先使用数据库缓存的专辑图片，丢弃解码得到的图片
+                    AlbumCoverImage = LoadBitmapImageFromBytes(cached.AlbumArt);
+                }
+                else
+                {
+                    AlbumCoverImage = image != null ? ConvertDrawingImageToWpfImage(image) : null;
 
-                    Stream? stream = null;
-                if (image != null)
+                    // 将解码得到的图片写入数据库缓存
+                    if (cached is not null)
+                    {
+                        if (image is not null)
+                        {
+                            using var artStream = new MemoryStream();
+                            image.Save(artStream, System.Drawing.Imaging.ImageFormat.Png);
+                            cached.AlbumArt = artStream.ToArray();
+                        }
+                        else
+                        {
+                            cached.AlbumArt = null;
+                        }
+                        _songDatabase.Upsert(cached);
+                    }
+                }
+
+                var playlistItem = PlaylistItems.FirstOrDefault(p => p.FilePath == _currentFilePath);
+                if (playlistItem != null)
+                    playlistItem.AlbumCover = AlbumCoverImage;
+
+                Stream? stream = null;
+                if (AlbumCoverImage is not null && cached?.AlbumArt is { Length: > 0 })
+                {
+                    stream = new MemoryStream(cached.AlbumArt);
+                }
+                else if (image is not null)
                 {
                     stream = new MemoryStream();
                     image.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
@@ -342,7 +425,6 @@ public class MainViewModel : ViewModelBase, IDisposable
             {
                 image?.Dispose();
             }
-
         }, null);
     }
 
@@ -386,6 +468,10 @@ public class MainViewModel : ViewModelBase, IDisposable
     {
         _previousLatencyMode = GCSettings.LatencyMode;
         GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+        if (_currentMd5 is not null)
+        {
+            _songDatabase.IncrementPlayCount(_currentMd5);
+        }
         _syncContext.Post(_ =>
         {
             PlayPauseContent = "\u23F8";
@@ -710,6 +796,25 @@ public class MainViewModel : ViewModelBase, IDisposable
         bitmapImage.Freeze();
 
         return bitmapImage;
+    }
+
+    private static BitmapImage LoadBitmapImageFromBytes(byte[] data)
+    {
+        using var memoryStream = new MemoryStream(data);
+        var bitmapImage = new BitmapImage();
+        bitmapImage.BeginInit();
+        bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+        bitmapImage.StreamSource = memoryStream;
+        bitmapImage.EndInit();
+        bitmapImage.Freeze();
+        return bitmapImage;
+    }
+
+    private static string ComputeFileMd5(string filePath)
+    {
+        using var stream = File.OpenRead(filePath);
+        var hashBytes = MD5.HashData(stream);
+        return Convert.ToHexStringLower(hashBytes);
     }
 
     private static string FormatTime(float seconds)

@@ -9,6 +9,7 @@ using MusicPlayerLibrary;
 using WpfMusicPlayer.Helpers;
 using WpfMusicPlayer.Services;
 using WpfMusicPlayer.ViewModels;
+using WpfMusicPlayer.Views;
 
 namespace WpfMusicPlayer
 {
@@ -19,14 +20,21 @@ namespace WpfMusicPlayer
     {
         private MainViewModel ViewModel => (MainViewModel)DataContext;
         private TranslateTransform PlaylistTranslate => (TranslateTransform)PlaylistContent.RenderTransform;
+        private TranslateTransform PortraitSongInfoTranslate => (TranslateTransform)PortraitSongInfoView.RenderTransform;
         private bool _isSidebarOpen;
         private bool _isEqualizerOpen;
+        private DecodingDialog? _decodingDialog;
 
         public MainWindow()
         {
+            if (DesignerProperties.GetIsInDesignMode(new DependencyObject()))
+            {
+                return; // 在Blend中阻止构造函数运行
+            }
+
             InitializeComponent();
             var smtcService = new SmtcService();
-            DataContext = new MainViewModel(new FileDialogService(), smtcService);
+            DataContext = new MainViewModel(new FileDialogService(), smtcService, new SongDatabaseService());
             AtlTraceRedirectManager.Init();
             SourceInitialized += (s, e) =>
             {
@@ -44,6 +52,21 @@ namespace WpfMusicPlayer
 
         private void ViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
         {
+            if (e.PropertyName == nameof(MainViewModel.IsDecoding))
+            {
+                if (ViewModel.IsDecoding)
+                {
+                    _decodingDialog = new DecodingDialog { Owner = this };
+                    _decodingDialog.Show();
+                }
+                else
+                {
+                    _decodingDialog?.Close();
+                    _decodingDialog = null;
+                }
+                return;
+            }
+
             if (e.PropertyName == nameof(MainViewModel.IsPlaylistVisible))
             {
                 var gen = ++_playlistAnimGen;
@@ -64,15 +87,15 @@ namespace WpfMusicPlayer
                 Dispatcher.BeginInvoke(delegate
                 {
                     if (ViewModel.CurrentLyricIndex < 0) return;
-                    ScrollLyricToCenter(_isPortrait ? PortraitLyricsList : LandscapeLyricsList, index);
+                    ScrollLyricToCenter(_isPortrait ? PortraitLyricsView.LyricsList : LandscapeLyricsView.LyricsList, index);
                 }, DispatcherPriority.Loaded);
                 return;
             }
             
             if (e.PropertyName != nameof(MainViewModel.CurrentLyricIndex)) return;
 
-            ScrollLyricToCenter(LandscapeLyricsList, index);
-            ScrollLyricToCenter(PortraitLyricsList, index);
+            ScrollLyricToCenter(LandscapeLyricsView.LyricsList, index);
+            ScrollLyricToCenter(PortraitLyricsView.LyricsList, index);
         }
 
         private static void ScrollLyricToCenter(ListBox listBox, int index)
@@ -116,30 +139,6 @@ namespace WpfMusicPlayer
             ViewModel.Dispose();
         }
 
-        private void LyricsList_PreviewMouseLeftButtonUp(object sender, MouseButtonEventArgs e)
-        {
-            if (sender is not ListBox) return;
-
-            var source = e.OriginalSource as DependencyObject;
-            while (source is not null and not ListBoxItem)
-                source = VisualTreeHelper.GetParent(source);
-
-            if (source is ListBoxItem { DataContext: LyricLineViewModel lyric })
-                ViewModel.SeekToLyric(lyric);
-        }
-
-        private void LyricsList_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
-        {
-            if (sender is not ListBox listBox) return;
-
-            // 转发到外层
-            var parentScrollViewer = FindParentScrollViewer(listBox);
-            if (parentScrollViewer == null) return;
-
-            parentScrollViewer.ScrollToVerticalOffset(parentScrollViewer.VerticalOffset - e.Delta);
-            e.Handled = true;
-        }
-
         private void MainWindow_Drop(object sender, DragEventArgs e)
         {
             if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
@@ -157,16 +156,6 @@ namespace WpfMusicPlayer
             }
         }
 
-        private void ProgressSlider_PreviewMouseDown(object sender, MouseButtonEventArgs e)
-        {
-            ViewModel.IsDraggingSlider = true;
-        }
-
-        private void ProgressSlider_PreviewMouseUp(object sender, MouseButtonEventArgs e)
-        {
-            ViewModel.SeekToCurrentPosition();
-        }
-
         private bool _isPortrait;
         private bool _layoutInitialized;
 
@@ -180,7 +169,7 @@ namespace WpfMusicPlayer
                 _isPortrait = shouldBePortrait;
                 LandscapeContent.Visibility = shouldBePortrait ? Visibility.Collapsed : Visibility.Visible;
                 PortraitContent.Visibility  = shouldBePortrait ? Visibility.Visible   : Visibility.Collapsed;
-                VolumePanel.Visibility = shouldBePortrait ? Visibility.Collapsed : Visibility.Visible;
+                PlayerToolbar.VolumePanelElement.Visibility = shouldBePortrait ? Visibility.Collapsed : Visibility.Visible;
                 return;
             }
 
@@ -189,7 +178,7 @@ namespace WpfMusicPlayer
 
             if (ViewModel.IsPlaylistVisible)
             {
-                VolumePanel.Visibility = shouldBePortrait ? Visibility.Collapsed : Visibility.Visible;
+                PlayerToolbar.VolumePanelElement.Visibility = shouldBePortrait ? Visibility.Collapsed : Visibility.Visible;
                 return;
             }
 
@@ -269,7 +258,7 @@ namespace WpfMusicPlayer
             incoming.Visibility = Visibility.Visible;
             incoming.Opacity = 0;
 
-            var inTranslate = _isPortrait ? PortraitLyricsTranslate : LandscapeLyricsTranslate;
+            var inTranslate = _isPortrait ? PortraitLyricsView.LyricsTranslate : LandscapeLyricsView.LyricsTranslate;
             inTranslate.Y = 30;
 
             // 淡出playlist，下沉
@@ -310,7 +299,7 @@ namespace WpfMusicPlayer
                 Dispatcher.BeginInvoke(() =>
                 {
                     ScrollLyricToCenter(
-                        _isPortrait ? PortraitLyricsList : LandscapeLyricsList,
+                        _isPortrait ? PortraitLyricsView.LyricsList : LandscapeLyricsView.LyricsList,
                         ViewModel.CurrentLyricIndex);
                 }, DispatcherPriority.Loaded);
             };
@@ -334,7 +323,7 @@ namespace WpfMusicPlayer
 
         private async void AnimateLayoutSwitch(bool toPortrait, int gen)
         {
-            VolumePanel.Visibility = toPortrait ? Visibility.Collapsed : Visibility.Visible;
+            PlayerToolbar.VolumePanelElement.Visibility = toPortrait ? Visibility.Collapsed : Visibility.Visible;
 
             var incoming = toPortrait ? PortraitContent : LandscapeContent;
             var outgoing = toPortrait ? LandscapeContent : PortraitContent;
@@ -344,8 +333,8 @@ namespace WpfMusicPlayer
 
             var inAlbumTranslate  = toPortrait ? PortraitAlbumTranslate      : LandscapeAlbumTranslate;
             var inAlbumScale      = toPortrait ? PortraitAlbumScale          : LandscapeAlbumScale;
-            var inSongTranslate   = toPortrait ? PortraitSongInfoTranslate   : LandscapeSongInfoTranslate;
-            var inLyricsTranslate = toPortrait ? PortraitLyricsTranslate     : LandscapeLyricsTranslate;
+            var inSongTranslate   = toPortrait ? PortraitSongInfoTranslate   : PlayerToolbar.LandscapeSongInfoTranslate;
+            var inLyricsTranslate = toPortrait ? PortraitLyricsView.LyricsTranslate     : LandscapeLyricsView.LyricsTranslate;
 
             ClearLayoutAnimations();
 
@@ -374,16 +363,16 @@ namespace WpfMusicPlayer
             // 修改：LandscapeSongInfo移动至窗口底部，改为平滑淡出+淡入，而不是在页面上运动
             if (toPortrait)
             {
-                LandscapeSongInfo.Visibility = Visibility.Collapsed;
+                PlayerToolbar.LandscapeSongInfo.Visibility = Visibility.Collapsed;
                 PortraitSongInfoTranslate.X = 0;
                 PortraitSongInfoTranslate.Y = 15;
             }
             else
             {
-                LandscapeSongInfo.Opacity = 0;
-                LandscapeSongInfo.Visibility = Visibility.Visible;
-                LandscapeSongInfoTranslate.X = -20;
-                LandscapeSongInfoTranslate.Y = 0;
+                PlayerToolbar.LandscapeSongInfo.Opacity = 0;
+                PlayerToolbar.LandscapeSongInfo.Visibility = Visibility.Visible;
+                PlayerToolbar.LandscapeSongInfoTranslate.X = -20;
+                PlayerToolbar.LandscapeSongInfoTranslate.Y = 0;
             }
 
             var duration = new Duration(TimeSpan.FromMilliseconds(420));
@@ -406,10 +395,10 @@ namespace WpfMusicPlayer
                 songFadeIn.Completed += (_, _) =>
                 {
                     if (_layoutAnimGen != gen) return;
-                    LandscapeSongInfo.BeginAnimation(OpacityProperty, null);
-                    LandscapeSongInfo.Opacity = 1;
+                    PlayerToolbar.LandscapeSongInfo.BeginAnimation(OpacityProperty, null);
+                    PlayerToolbar.LandscapeSongInfo.Opacity = 1;
                 };
-                LandscapeSongInfo.BeginAnimation(OpacityProperty, songFadeIn);
+                PlayerToolbar.LandscapeSongInfo.BeginAnimation(OpacityProperty, songFadeIn);
             }
 
             var fadeIn = new DoubleAnimation(1, new Duration(TimeSpan.FromMilliseconds(320)))
@@ -447,7 +436,7 @@ namespace WpfMusicPlayer
             Dispatcher.BeginInvoke(() =>
             {
                 ScrollLyricToCenter(
-                    _isPortrait ? PortraitLyricsList : LandscapeLyricsList,
+                    _isPortrait ? PortraitLyricsView.LyricsList : LandscapeLyricsView.LyricsList,
                     ViewModel.CurrentLyricIndex);
             }, DispatcherPriority.Loaded);
         }
@@ -458,17 +447,17 @@ namespace WpfMusicPlayer
             LandscapeContent.Opacity = 1;
             PortraitContent.BeginAnimation(OpacityProperty, null);
             PortraitContent.Opacity = 1;
-            LandscapeSongInfo.BeginAnimation(OpacityProperty, null);
-            LandscapeSongInfo.Opacity = 1;
+            PlayerToolbar.LandscapeSongInfo.BeginAnimation(OpacityProperty, null);
+            PlayerToolbar.LandscapeSongInfo.Opacity = 1;
             PlaylistContent.BeginAnimation(OpacityProperty, null);
             PlaylistContent.Opacity = 1;
 
             ClearTransformAnimations(LandscapeAlbumTranslate, LandscapeAlbumScale);
-            ClearTransformAnimations(LandscapeSongInfoTranslate, null);
-            ClearTransformAnimations(LandscapeLyricsTranslate, null);
+            ClearTransformAnimations(PlayerToolbar.LandscapeSongInfoTranslate, null);
+            ClearTransformAnimations(LandscapeLyricsView.LyricsTranslate, null);
             ClearTransformAnimations(PortraitAlbumTranslate, PortraitAlbumScale);
             ClearTransformAnimations(PortraitSongInfoTranslate, null);
-            ClearTransformAnimations(PortraitLyricsTranslate, null);
+            ClearTransformAnimations(PortraitLyricsView.LyricsTranslate, null);
             ClearPlaylistTransformAnimations();
         }
 
