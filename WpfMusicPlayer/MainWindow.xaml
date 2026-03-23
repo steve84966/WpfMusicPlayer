@@ -519,6 +519,12 @@
                 </Grid>
             </Grid>
 
+            <views:PlaylistView x:Name="PlaylistContent" Grid.Row="0" Visibility="Collapsed">
+                <views:PlaylistView.RenderTransform>
+                    <TranslateTransform/>
+                </views:PlaylistView.RenderTransform>
+            </views:PlaylistView>
+
             <Grid x:Name="PortraitContent" Grid.Row="0" Margin="20" Visibility="Collapsed">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="*"/>

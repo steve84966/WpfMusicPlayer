@@ -22,6 +22,7 @@ public class MainViewModel : ViewModelBase, IDisposable
     private string? _currentFilePath;
     private LrcFileController? _lrcFileController;
     private int _sampleRate;
+    private bool _enableAutoPlay;
     private GCLatencyMode _previousLatencyMode;
 
     public MainViewModel(IFileDialogService fileDialogService, ISmtcService smtcService)
@@ -32,6 +33,7 @@ public class MainViewModel : ViewModelBase, IDisposable
         Equalizer = new EqualizerViewModel(ApplyEqualizerBand);
         _sampleRate = 48000; // Studio quality
         _musicPlayer = new MusicPlayer(_sampleRate);
+        
         SubscribePlayerEvents();
         SubscribeSmtcEvents();
 
@@ -40,7 +42,7 @@ public class MainViewModel : ViewModelBase, IDisposable
         PrevCommand = new RelayCommand(() => { });
         NextCommand = new RelayCommand(() => { });
         PlayModeCommand = new RelayCommand(() => { });
-        PlaylistCommand = new RelayCommand(() => { });
+        PlaylistCommand = new RelayCommand(OnTogglePlaylist);
         TranslateCommand = new RelayCommand(OnToggleTranslation, () => HasTranslationAvailable);
         RomanjiCommand = new RelayCommand(OnToggleRomanji, () => HasRomanjiAvailable);
     }
@@ -148,6 +150,14 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     public bool IsFileDialogOpen { get; set; }
 
+    public ObservableCollection<PlaylistItemViewModel> PlaylistItems { get; } = [];
+
+    public bool IsPlaylistVisible
+    {
+        get;
+        set => SetProperty(ref field, value);
+    }
+
     public ICommand PlayPauseCommand { get; }
     public ICommand OpenCommand { get; }
     public ICommand PrevCommand { get; }
@@ -164,6 +174,10 @@ public class MainViewModel : ViewModelBase, IDisposable
         _musicPlayer = new MusicPlayer(_sampleRate);
         SubscribePlayerEvents();
         _musicPlayer.OpenFile(filePath);
+        if (!_enableAutoPlay)
+        {
+            _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
+        }
     }
 
     public async void SeekToCurrentPosition()
@@ -288,6 +302,8 @@ public class MainViewModel : ViewModelBase, IDisposable
             SongTitle = _musicPlayer.GetSongTitle() ?? "Unknown Title";
             ArtistName = _musicPlayer.GetSongArtist() ?? "Unknown Artist";
 
+            AddToPlaylist();
+
             // 坑：UpdateMetadata会清除缩略图，对非NCM文件，FileInit总是晚于AlbumArtInit，导致设置的缩略图被清空
             _smtcService.UpdateTextMetadata(SongTitle, ArtistName);
             _smtcService.UpdateTimeline(TimeSpan.Zero, TimeSpan.FromSeconds(length));
@@ -295,6 +311,8 @@ public class MainViewModel : ViewModelBase, IDisposable
             _musicPlayer.SetMasterVolume((float)Volume);
 
             LoadLyrics();
+            if (_enableAutoPlay)
+                _musicPlayer.Start();
         }, null);
     }
 
@@ -306,7 +324,11 @@ public class MainViewModel : ViewModelBase, IDisposable
             {
                 AlbumCoverImage = image != null ? ConvertDrawingImageToWpfImage(image) : null;
 
-                Stream? stream = null;
+                    var playlistItem = PlaylistItems.FirstOrDefault(p => p.FilePath == _currentFilePath);
+                    if (playlistItem != null)
+                        playlistItem.AlbumCover = AlbumCoverImage;
+
+                    Stream? stream = null;
                 if (image != null)
                 {
                     stream = new MemoryStream();
@@ -369,6 +391,7 @@ public class MainViewModel : ViewModelBase, IDisposable
             PlayPauseContent = "\u23F8";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Playing);
             _smtcService.UpdateTimeline(TimeSpan.FromSeconds(ProgressValue), TimeSpan.FromSeconds(ProgressMaximum));
+            _enableAutoPlay = false;
         }, null);
     }
 
@@ -451,7 +474,6 @@ public class MainViewModel : ViewModelBase, IDisposable
         try
         {
             await Task.Run(() => OpenFile(path));
-            _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
         }
         catch (Exception ex)
         {
@@ -625,6 +647,37 @@ public class MainViewModel : ViewModelBase, IDisposable
             if (string.IsNullOrEmpty(path)) return;
             searchPaths.Add(path);
             searchPaths.Add(Path.Combine(path, "Lyrics"));
+        }
+    }
+
+    private void OnTogglePlaylist()
+    {
+        IsPlaylistVisible = !IsPlaylistVisible;
+    }
+
+    private void AddToPlaylist()
+    {
+        if (_currentFilePath == null) return;
+        if (PlaylistItems.All(p => p.FilePath != _currentFilePath))
+        {
+            PlaylistItems.Add(new PlaylistItemViewModel(
+                _currentFilePath, SongTitle, ArtistName, TotalTime));
+        }
+        foreach (var item in PlaylistItems)
+            item.IsPlaying = item.FilePath == _currentFilePath;
+    }
+
+    public async void PlayFromPlaylist(PlaylistItemViewModel item)
+    {
+        // IsPlaylistVisible = false;
+        try
+        {
+            _enableAutoPlay = true;
+            OpenFile(item.FilePath);
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show($"{ex.Message}\n{item.FilePath}", "Error", WpfMessageBoxIcon.Error);
         }
     }
 
