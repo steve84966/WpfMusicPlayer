@@ -51,8 +51,13 @@ jobs:
         run: msbuild WpfMusicPlayer.slnx /t:Restore /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT
 
       - name: Build solution
-        run: msbuild WpfMusicPlayer.slnx /p:Configuration=Release /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT
-        
+        run: >
+          msbuild WpfMusicPlayer.slnx
+          /p:Configuration=Release
+          /p:Platform=x64
+          /p:VcpkgRoot=$env:VCPKG_ROOT
+          /p:VcpkgInstalledDir=${{ github.workspace }}/vcpkg_installed
+          
       - name: Copy native build output to app output
         shell: pwsh
         run: |
