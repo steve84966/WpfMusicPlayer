@@ -17,14 +17,6 @@ static float GetSystemDpiScale()
 	return static_cast<float>(dpiX) / 96.0f;
 }
 
-int MusicPlayerLibrary::Class1::Add(int a, int b)
-{
-    std::printf("native printf invoked\n");
-	Console::WriteLine("managed Console.WriteLine invoked");
-	Console::WriteLine("system dpi scale: {0}", GetSystemDpiScale());
-    return a + b;
-}
-
 int MusicPlayerLibrary::MusicPlayerNative::read_func(uint8_t* buf, int buf_size) {
 	// ATLTRACE("info: read buf_size=%d, rest=%lld\n", buf_size, file_stream->GetLength() - file_stream->GetPosition());
 	// reset file_stream_end
