@@ -46,9 +46,21 @@ jobs:
           }
           git checkout 4b77da7fed37817f124936239197833469f1b9a8
           .\bootstrap-vcpkg.bat
+          .\vcpkg integrate install      
+          
+      - name: Install vcpkg packages
+        run: >
+          $env:VCPKG_ROOT/vcpkg install
+          --triplet x64-windows
+          --x-install-root=${{ github.workspace }}/vcpkg_installed
 
       - name: Restore NuGet packages
-        run: msbuild WpfMusicPlayer.slnx /t:Restore /p:Platform=x64 /p:VcpkgRoot=$env:VCPKG_ROOT
+        run: >
+          msbuild WpfMusicPlayer.slnx
+          /t:Restore
+          /p:Platform=x64
+          /p:VcpkgRoot=$env:VCPKG_ROOT
+          /p:VcpkgInstalledDir=${{ github.workspace }}/vcpkg_installed
 
       - name: Build solution
         run: >
