@@ -10,11 +10,14 @@ jobs:
 
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_DEFAULT_TRIPLET: x64-windows
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}\.vcpkg-cache,readwrite
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Print runner hardware info
+        shell: pwsh
         run: |
           $cpu = Get-CimInstance Win32_Processor
           Write-Output "Hosted Runner Information:"
@@ -27,31 +30,29 @@ jobs:
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v2
 
-      - name: Cache vcpkg installed packages
+      - name: Cache vcpkg binary archives
         uses: actions/cache@v4
         with:
-          path: vcpkg_installed
-          key: vcpkg-installed-${{ runner.os }}-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+          path: ${{ github.workspace }}\.vcpkg-cache
+          key: vcpkg-archives-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-4b77da7fed37817f124936239197833469f1b9a8-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
           restore-keys: |
-            vcpkg-installed-${{ runner.os }}-
+            vcpkg-archives-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-4b77da7fed37817f124936239197833469f1b9a8-
+            vcpkg-archives-${{ runner.os }}-${{ env.VCPKG_DEFAULT_TRIPLET }}-
 
       - name: Setup vcpkg
+        shell: pwsh
         run: |
-          if (Test-Path "${{ github.workspace }}/vcpkg") {
-            cd ${{ github.workspace }}/vcpkg
-            git fetch
-          } else {
-            git clone https://github.com/microsoft/vcpkg.git ${{ github.workspace }}/vcpkg
-            cd ${{ github.workspace }}/vcpkg
-          }
+          git clone https://github.com/microsoft/vcpkg.git $env:VCPKG_ROOT
+          cd $env:VCPKG_ROOT
           git checkout 4b77da7fed37817f124936239197833469f1b9a8
           .\bootstrap-vcpkg.bat
           .\vcpkg integrate install      
           
       - name: Install vcpkg packages
+        shell: pwsh
         run: |
-          cd ${{ github.workspace }}/vcpkg
-          .\vcpkg install --triplet x64-windows --x-install-root=${{ github.workspace }}/vcpkg_installed
+          cd $env:VCPKG_ROOT
+          .\vcpkg install --triplet $env:VCPKG_DEFAULT_TRIPLET --x-install-root=${{ github.workspace }}/vcpkg_installed
 
       - name: Restore NuGet packages
         run: >
