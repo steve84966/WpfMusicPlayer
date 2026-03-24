@@ -3,14 +3,13 @@ name: Build
 on:
   push:
   pull_request:
-    
-permissions:
-  contents: read
-  packages: write
 
 jobs:
   build:
     runs-on: self-hosted
+    permissions:
+      contents: read
+      packages: write
 
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
