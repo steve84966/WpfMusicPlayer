@@ -498,11 +498,21 @@ void LrcFileControllerNative::parse_lrc_file_stream(CFile* file_stream)
     CString file_content_w;
     MultiByteToWideChar(CP_UTF8, 0, file_content_a, -1, file_content_w.GetBuffer(wide_len), wide_len);
     file_content_w.ReleaseBuffer();
+    
+    // fix issue #12
+    // 关于歌词文件/歌曲内嵌歌词内出现时间tag非强制有序的翻译歌词时程序的错误/闪退问题
+    // struct definition: caching each line for strong_ordering sort
+    struct CachedTimeLine
+    {
+        int time_stamp_ms;
+        CString text;
+    };
+    std::vector<CachedTimeLine> time_lines;
+    
     // 逐行解析
     int start = 0, flag_decoding_metadata = 1;
     std::stack<CString> lyrics_in_ms;
     int recorded_ms = 0;
-    bool is_lrc_end = false;
 
     auto pump_stack = [&](bool is_lrc_ended)
     {
@@ -545,7 +555,7 @@ void LrcFileControllerNative::parse_lrc_file_stream(CFile* file_stream)
         if (end == -1)
         {
             end = file_content_w.GetLength();
-            is_lrc_end = true;
+            // 因为现在缓存所有歌词行，所以不需要设置is_lrc_end flag
         }
         CString line = file_content_w.Mid(start, end - start).Trim();
         if (line.IsEmpty())
@@ -604,62 +614,69 @@ void LrcFileControllerNative::parse_lrc_file_stream(CFile* file_stream)
         // 解析时间tag
         if (line.GetLength() < 10)
         {
-            // AfxMessageBox(_T("err: invalid lrc line, aborting!"), MB_ICONERROR);
-            // clear stack
-            while (!lyrics_in_ms.empty())
-            {
-                lyrics_in_ms.pop();
-            }
             clear_lrc_nodes();
             throw gcnew System::InvalidOperationException("Invalid lrc line, aborting!");
         }
-        int time_tag_end_index = line.Find(']');
-        if (time_tag_end_index == -1 || line[0] != '[' || line[3] != ':' || 
-            (line[6] != '.' && line[6] != ':'))
-        {
-            // (_T("err: invalid lrc time tag, aborting!"), MB_ICONERROR);
-            while (!lyrics_in_ms.empty())
-            {
-                lyrics_in_ms.pop();
-            }
-            clear_lrc_nodes();
-            throw gcnew System::InvalidOperationException("Invalid lrc time tag, aborting!");
-        }
-        int minutes = _ttoi(line.Mid(1, 2));
-        int seconds = _ttoi(line.Mid(4, 2));
-        CString milliseconds_str = line.Mid(7, time_tag_end_index - 7);
-        int milliseconds = _ttoi(milliseconds_str);
-        if (milliseconds_str.GetLength() < 3)
-        {
-            auto multiples = 3 - milliseconds_str.GetLength();
-            milliseconds *= std::floor(pow(10, multiples));
-        }
 
-        switch (int total_ms = minutes * 60000 + seconds * 1000 + milliseconds + lrc_offset_ms; WAY3RES(
-            total_ms <=> recorded_ms))
+        CString lyric_text = line;
+        // 处理同一行多个时间戳的问题
+        std::vector<int> time_stamps;
+        while (lyric_text.GetLength() > 0 && lyric_text[0] == '[')
         {
-        case ThreeWayCompareResult::Less: // 歌词时间戳一定有序
-            // AfxMessageBox(_T("err: invalid time stamp order!"), MB_ICONERROR);
-            while (!lyrics_in_ms.empty())
+            int time_tag_end_index_multi = lyric_text.Find(']');
+            if (time_tag_end_index_multi == -1 || lyric_text[0] != '[' || lyric_text[3] != ':' || 
+                (lyric_text[6] != '.' && lyric_text[6] != ':'))
             {
-                lyrics_in_ms.pop();
+                clear_lrc_nodes();
+                throw gcnew System::InvalidOperationException("Invalid lrc time tag, aborting!");
             }
-            clear_lrc_nodes();
-            throw gcnew System::InvalidOperationException("Invalid time stamp order!");
-        case ThreeWayCompareResult::Greater:
-            // 先处理之前的歌词
-            if (total_ms < 0) total_ms = 0;
-            if (!lyrics_in_ms.empty())
-                pump_stack(is_lrc_end);
-            recorded_ms = total_ms;
-            break;
-        default:
-            break;
+            int minutes = _ttoi(lyric_text.Mid(1, 2));
+            int seconds = _ttoi(lyric_text.Mid(4, 2));
+            CString milliseconds_str = lyric_text.Mid(7, time_tag_end_index_multi - 7);
+            int milliseconds = _ttoi(milliseconds_str);
+            if (milliseconds_str.GetLength() < 3)
+            {
+                auto multiples = 3 - milliseconds_str.GetLength();
+                milliseconds *= std::floor(pow(10, multiples));
+            }
+            int total_ms_multi = minutes * 60000 + seconds * 1000 + milliseconds + lrc_offset_ms;
+            if (total_ms_multi < 0) total_ms_multi = 0;
+            time_stamps.push_back(total_ms_multi);
+            lyric_text = lyric_text.Mid(time_tag_end_index_multi + 1).Trim();
         }
-        lyrics_in_ms.push(line.Mid(time_tag_end_index + 1).Trim());
+        if (time_stamps.empty())
+            throw gcnew System::InvalidOperationException("Invalid lrc time tag, aborting!");
+        for (int time_stamp : time_stamps) 
+            time_lines.push_back({ time_stamp, lyric_text });
+
         start = end + 1;
     }
-    pump_stack(is_lrc_end);
+
+    // stable sort lrc lines
+    // 使用快排会打乱时间戳原始数据
+    std::ranges::stable_sort(time_lines,
+                             [](const CachedTimeLine& a, const CachedTimeLine& b)
+                             {
+                                 return a.time_stamp_ms < b.time_stamp_ms;
+                             });
+
+    for (size_t i = 0; i < time_lines.size(); ++i)
+    {
+        int total_ms = time_lines[i].time_stamp_ms;
+
+        if (total_ms != recorded_ms)
+        {
+            // 新的时间戳，先处理之前的歌词
+            if (!lyrics_in_ms.empty())
+                pump_stack(false);
+            recorded_ms = total_ms;
+        }
+        lyrics_in_ms.push(time_lines[i].text);
+    }
+    // 处理最后一组
+    if (!lyrics_in_ms.empty())
+        pump_stack(true);
+
     cur_lrc_node_index = 0;
 }
 

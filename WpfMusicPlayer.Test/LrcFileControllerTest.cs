@@ -261,7 +261,7 @@ public sealed class LrcFileControllerTest
         // Word-level sync: text<timestamp>text<timestamp>
         const string lrc =
             """
-            [00:01.00]Hello<00:02.00>World<00:03.00>
+            [00:01.00]<00:01.00>Hello<00:02.00>World<00:03.00>
             [00:10.00]End
             """;
 
@@ -275,7 +275,7 @@ public sealed class LrcFileControllerTest
     {
         const string lrc =
             """
-            [00:01.00]Hello<00:02.00>World<00:03.00>
+            [00:01.00]<00:01.00>Hello<00:02.00>World<00:03.00>
             [00:10.00]End
             """;
 
@@ -291,7 +291,7 @@ public sealed class LrcFileControllerTest
     {
         const string lrc =
             """
-            [00:01.00]Hello<00:02.00>World<00:03.00>
+            [00:01.00]<00:01.00>Hello<00:02.00>World<00:03.00>
             [00:10.00]End
             """;
 
@@ -323,18 +323,49 @@ public sealed class LrcFileControllerTest
     }
 
     #endregion
-
-    #region Error handling
+    
+    #region Disordered & Multiple Time Stamp Handling
 
     [TestMethod]
-    public void ParseLrcStream_InvalidTimestamp_Throws()
+    public void ParseLrcStream_DisorderedTimestamp()
     {
         const string lrc = "[00:05.00]B\n[00:01.00]A";
-        Assert.ThrowsExactly<InvalidOperationException>(() =>
-        {
-            using var ctrl = CreateFromStream(lrc);
-        });
+        Assert.AreEqual(2, CreateFromStream(lrc).GetLrcNodeCount());
+        Assert.AreEqual(1000, CreateFromStream(lrc).GetLrcNodeTimeMs(0));
+        Assert.AreEqual(5000, CreateFromStream(lrc).GetLrcNodeTimeMs(1));
     }
+    #endregion
+
+    [TestMethod]
+    public void ParseLrcStream_MultipleTimeStamps()
+    {
+        const string lrc = "[01:08.39][01:30.10][03:17.21][04:01.65]And though I know, since you've awakened her again";
+        Assert.AreEqual(4, CreateFromStream(lrc).GetLrcNodeCount());
+    }
+
+    [TestMethod]
+    public void ParseLrcStream_PartitionedTranslationBlock()
+    {
+        const string lrc = """
+                           [00:27.12]마음이 울적하고 답답할 땐
+                           [00:30.87]산으로 올라가 소릴 한번 질러봐
+                           [00:34.29]나처럼 이렇게 가슴을 펴고
+                           
+                           [00:27.12]当心中忧郁寂寞又烦闷之时
+                           [00:30.87]上山去喊出来吧
+                           [00:34.29]像我这样打开心扉
+                           """;
+        Assert.AreEqual(3, CreateFromStream(lrc).GetLrcNodeCount());
+        Assert.AreEqual(27120, CreateFromStream(lrc).GetLrcNodeTimeMs(0));
+        Assert.AreEqual(30870, CreateFromStream(lrc).GetLrcNodeTimeMs(1));
+        Assert.AreEqual(34290, CreateFromStream(lrc).GetLrcNodeTimeMs(2));
+        Assert.AreEqual(true, CreateFromStream(lrc).IsAuxiliaryInfoEnabled(LrcAuxiliaryInfo.Translation));
+        Assert.AreEqual(1, CreateFromStream(lrc).GetLrcLineAuxIndex(0, LrcAuxiliaryInfo.Translation));
+        Assert.AreEqual(1, CreateFromStream(lrc).GetLrcLineAuxIndex(1, LrcAuxiliaryInfo.Translation));
+        Assert.AreEqual(1, CreateFromStream(lrc).GetLrcLineAuxIndex(2, LrcAuxiliaryInfo.Translation));
+    }
+
+    #region Error handling
 
     [TestMethod]
     public void ParseLrcStream_MalformedTimeTag_Throws()
