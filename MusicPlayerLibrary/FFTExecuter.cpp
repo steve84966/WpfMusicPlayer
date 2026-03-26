@@ -17,6 +17,8 @@ void MusicPlayerLibrary::FFTExecuter::AddSamplesToRingBuffer(uint8_t* samples, i
     {
         spectrum_data_ring_buffer.pop_front();
     }
+    // wake fft consumer thread
+    ring_buffer_cv.notify_one();
 }
 
 int MusicPlayerLibrary::FFTExecuter::GetRingBufferSize() const
@@ -48,29 +50,25 @@ void MusicPlayerLibrary::FFTExecuter::DoFFT(const std::vector<double>& windowed_
     size_t n = windowed_data.size();
     if (n == 0) return;
 
-    // in/out buffer alloc
-    std::vector<kiss_fft_cpx> in(fft_size);
-    std::vector<kiss_fft_cpx> out(fft_size);
-
     // padding imaginary part to zero
     // cause kissfft only supports real input
     for (size_t i = 0; i < n; ++i) {
-        in[i].r = static_cast<float>(windowed_data[i]);
-        in[i].i = 0.0f;
+        fft_in[i].r = windowed_data[i];
+        fft_in[i].i = 0.0f;
     }
     // zero padding
     for (size_t i = n; i < fft_size; ++i) {
-        in[i].r = 0.0f;
-        in[i].i = 0.0f;
+        fft_in[i].r = 0.0;
+        fft_in[i].i = 0.0;
     }
 
-    kiss_fft(fft_cfg, in.data(), out.data());
+    kiss_fft(fft_cfg, fft_in.data(), fft_out.data());
 
     // 幅度谱
     fft_result.resize(fft_size / 2);
     for (size_t i = 0; i < fft_size / 2; ++i) {
-        float real = out[i].r;
-        float imag = out[i].i;
+        float real = fft_out[i].r;
+        float imag = fft_out[i].i;
         fft_result[i] = sqrtf(real * real + imag * imag);
     }
 }
@@ -146,59 +144,111 @@ void MusicPlayerLibrary::FFTExecuter::ExecuteAudioFFT()
 
     auto boundaries = GenBoundaries(sample_rate, fft_size, segment_num);
 
-    spectrum_data.clear();
-    MapFreqToSegments(fft_result, spectrum_data, boundaries);
+    {
+        std::lock_guard<std::mutex> lock(spectrum_data_mutex); spectrum_data.clear();
+        MapFreqToSegments(fft_result, spectrum_data, boundaries);
 
-    for (size_t i = 0; i < spectrum_data.size(); ++i) {
-        float& val = spectrum_data[i];
-        // transition db
-        float db = 20.0f * log10f(val + 1e-6f);
-        constexpr float db_min = 10.0f;   // supress noise
-        constexpr float db_max = 45.0f;   // full
-        val = (db - db_min) / (db_max - db_min);
-        if (val < 0.0f) val = 0.0f;
-        if (val > 1.0f) val = 1.0f;
+        for (size_t i = 0; i < spectrum_data.size(); ++i) {
+            float& val = spectrum_data[i];
+            // transition db
+            float db = 20.0f * log10f(val + 1e-6f);
+            constexpr float db_min = 10.0f;   // supress noise
+            constexpr float db_max = 45.0f;   // full
+            val = (db - db_min) / (db_max - db_min);
+            if (val < 0.0f) val = 0.0f;
+            if (val > 1.0f) val = 1.0f;
 
-        // high freq attenuation
-        constexpr size_t high_freq_start = segment_num * 2 / 3;
-        if (i >= high_freq_start) {
-            float attenuation = 1.0f - 0.4f * static_cast<float>(i - high_freq_start) / (segment_num - high_freq_start);
-            val *= attenuation;
+            // high freq attenuation
+            constexpr size_t high_freq_start = segment_num * 2 / 3;
+            if (i >= high_freq_start) {
+                float attenuation = 1.0f - 0.4f * static_cast<float>(i - high_freq_start) / (segment_num - high_freq_start);
+                val *= attenuation;
+            }
         }
-    }
 
-    // time-domain smoothing
-    if (spectrum_smooth_data.size() != spectrum_data.size()) {
-        spectrum_smooth_data.resize(spectrum_data.size(), 0.0f);
-    }
+        // time-domain smoothing
+        if (spectrum_smooth_data.size() != spectrum_data.size()) {
+            spectrum_smooth_data.resize(spectrum_data.size(), 0.0f);
+        }
 
-    for (size_t i = 0; i < spectrum_data.size(); ++i) {
-        float smooth_factor = 0.75f;
-        spectrum_smooth_data[i] = smooth_factor * spectrum_smooth_data[i]
-            + (1.0f - smooth_factor) * spectrum_data[i];
-    }
+        for (size_t i = 0; i < spectrum_data.size(); ++i) {
+            float smooth_factor = 0.75f;
+            spectrum_smooth_data[i] = smooth_factor * spectrum_smooth_data[i]
+                + (1.0f - smooth_factor) * spectrum_data[i];
+        }
 
-    spectrum_data = spectrum_smooth_data;
+        spectrum_data = spectrum_smooth_data;
+    }
+   
 }
 
 const std::vector<float> MusicPlayerLibrary::FFTExecuter::GetAudioFFTData()
 {
+    std::lock_guard<std::mutex> lock(spectrum_data_mutex);
     return spectrum_data;
+}
+
+void MusicPlayerLibrary::FFTExecuter::StartFFTThread()
+{
+    if (fft_thread_running.exchange(true))
+        return;
+
+    fft_worker_thread = std::thread(&FFTExecuter::FFTWorkerLoop, this);
+}
+
+void MusicPlayerLibrary::FFTExecuter::StopFFTThread()
+{
+    if (!fft_thread_running.exchange(false))
+        return;
+
+    ring_buffer_cv.notify_all();
+    if (fft_worker_thread.joinable())
+        fft_worker_thread.join();
+    
+    spectrum_data.clear();
+    spectrum_smooth_data.clear();
+    spectrum_data_ring_buffer.clear();
+    fft_in.clear();
+    fft_out.clear();
+}
+
+void MusicPlayerLibrary::FFTExecuter::FFTWorkerLoop()
+{
+    while (fft_thread_running)
+    {
+        std::unique_lock lock(ring_buffer_mutex);
+        // FFT execution limitd to 60fps
+        ring_buffer_cv.wait_for(lock, std::chrono::milliseconds(16), [this]()
+            {
+                return !fft_thread_running || spectrum_data_ring_buffer.size() >= RING_BUFFER_MAX_SIZE;
+            });
+
+        if (!fft_thread_running)
+            break;
+
+        if (spectrum_data_ring_buffer.size() < RING_BUFFER_MAX_SIZE)
+            continue;
+
+        lock.unlock();
+        ExecuteAudioFFT();
+    }
 }
 
 MusicPlayerLibrary::FFTExecuter::FFTExecuter(int in_sample_rate):
     sample_rate(in_sample_rate)
 {
-    fft_cfg = kiss_fft_alloc(static_cast<int>(fft_size), 0, nullptr, nullptr);
+    fft_cfg = kiss_fft_alloc(fft_size, 0, nullptr, nullptr);
     if (!fft_cfg)
-        throw gcnew System::InvalidOperationException("kiss_fft_alloc failed!");
+        throw std::runtime_error("kiss_fft_alloc failed!");
 
     fft_in.resize(fft_size);
     fft_out.resize(fft_size);
+    StartFFTThread();
 }
 
 MusicPlayerLibrary::FFTExecuter::~FFTExecuter()
 {
+    StopFFTThread();
     if (fft_cfg)
     {
         kiss_fft_free(fft_cfg);

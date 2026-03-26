@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:WpfMusicPlayer.ViewModels"
         xmlns:views="clr-namespace:WpfMusicPlayer.Views"
+        xmlns:helpers="clr-namespace:WpfMusicPlayer.Helpers"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel}"
         Title="WpfMusicPlayer" Height="600" Width="800"
@@ -154,6 +155,11 @@
                             <Image Stretch="UniformToFill" Source="{Binding AlbumCoverImage}"/>
                         </Grid>
                     </Border>
+                    <helpers:SpectrumVisualizerControl x:Name="LandscapeSpectrum"
+                        Width="240" Height="64" Margin="0,0,0,20"
+                        SpectrumData="{Binding SpectrumData}"
+                        BarBrush="#AAFFFFFF" BarSpacing="2" BarCornerRadius="1.5"
+                        PeakBrush="#B0FFFFFF"/>
                 </StackPanel>
 
                 <views:LyricsView x:Name="LandscapeLyricsView" Grid.Column="1" Margin="20,0,0,0"
