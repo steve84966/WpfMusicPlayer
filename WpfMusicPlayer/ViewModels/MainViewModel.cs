@@ -214,6 +214,12 @@ public class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    public float[] SpectrumData
+    {
+        get;
+        private set => SetProperty(ref field, value);
+    } = [];
+
     public ObservableCollection<PlaylistItemViewModel> PlaylistItems { get; } = [];
 
     public ActiveView ActiveView
@@ -353,6 +359,19 @@ public class MainViewModel : ViewModelBase, IDisposable
         {
             CurrentBackgroundMode = _configProvider.GetConfig().UI.Background;
         }
+    }
+
+    public void PollSpectrumData()
+    {
+        if (!_musicPlayer.IsInitialized() || !_musicPlayer.IsPlaying())
+        {
+            if (SpectrumData.Length > 0)
+                SpectrumData = [];
+            return;
+        }
+        var data = _musicPlayer.GetAudioFFTData();
+        if (data is { Length: > 0 })
+            SpectrumData = data;
     }
 
     public void Dispose()

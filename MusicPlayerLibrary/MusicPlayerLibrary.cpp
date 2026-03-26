@@ -318,6 +318,11 @@ void MusicPlayerLibrary::MusicPlayerNative::release_audio_context()
 		codec_context = nullptr;
 	}
 	uninitialize_audio_fifo();
+	if (file_stream)
+	{
+		delete file_stream;
+		file_stream = nullptr;
+	}
 }
 
 void MusicPlayerLibrary::MusicPlayerNative::reset_audio_context()
@@ -677,7 +682,18 @@ inline int MusicPlayerLibrary::MusicPlayerNative::initialize_audio_engine()
 	last_frametime = 0.0;
 	standard_frametime = xaudio2_play_frame_size * 1.0 / wfx.nSamplesPerSec * 1000; // in ms
 	InterlockedExchange(playback_state, audio_playback_state_init);
-
+	// init FFTExecuter
+	try
+	{
+		fft_executer = new FFTExecuter(wfx.nSamplesPerSec);
+	}
+	catch (const std::exception& e)
+	{
+		ATLTRACE("err: create fft executer failed, reason=%s\n", e.what());
+		uninitialize_audio_engine();
+		return -1;
+	}
+	
 	return 0;
 }
 
@@ -736,6 +752,11 @@ inline void MusicPlayerLibrary::MusicPlayerNative::uninitialize_audio_engine()
 		av_packet_free(&packet);
 		packet = nullptr;
 	}
+	if (fft_executer)
+	{
+		delete fft_executer;
+		fft_executer = nullptr;
+	}
 	// release xaudio2 buffer
 	xaudio2_free_buffer();
 	xaudio2_destroy_buffer();
@@ -748,7 +769,6 @@ void MusicPlayerLibrary::MusicPlayerNative::audio_playback_worker_thread()
 	CEvent doneEvent(false, false, nullptr, nullptr);
 	DWORD spinWaitResult;
 	double decode_time_ms = 0.0;
-	array<uint8_t>^ boxed_array;
 	bool swr_flushed = false;
 
 	while (true) {
@@ -814,7 +834,14 @@ void MusicPlayerLibrary::MusicPlayerNative::audio_playback_worker_thread()
 					}
 
 					ATLTRACE("info: swr_convert flushed %d samples\n", out_samples);
-
+					// 最后做一次频谱分析
+					if (fft_executer)
+					{
+						fft_executer->AddSamplesToRingBuffer(
+							out_buffer,
+							out_samples * wfx.nBlockAlign);
+					}
+					
 					// 将冲洗出的数据提交给XAudio2
 					XAUDIO2_BUFFER* buffer_pcm = xaudio2_get_available_buffer(out_samples * wfx.nBlockAlign);
 					buffer_pcm->AudioBytes = out_samples * wfx.nBlockAlign;
@@ -904,7 +931,7 @@ void MusicPlayerLibrary::MusicPlayerNative::audio_playback_worker_thread()
 		delete[] out_buffer;
 		out_buffer = DBG_NEW uint8_t[out_buffer_size];
 		memset(out_buffer, 0, out_buffer_size);
-		uint8_t** fifo_buf = nullptr; int read_bytes = 0;
+		uint8_t** fifo_buf; int read_bytes;
 		// while (!TryEnterCriticalSection(audio_fifo_section)) {}
 		{
 			CriticalSectionLock fifo_lock(audio_fifo_section);
@@ -955,16 +982,16 @@ void MusicPlayerLibrary::MusicPlayerNative::audio_playback_worker_thread()
 			Sleep(5); // wait for producing buffer
 			continue;
 		}
-		// samples read, send to callback func
-		if ((WriteRawPCMBytesCallback^)write_raw_pcm_bytes_callback != nullptr && write_raw_pcm_bytes_callback->HasSingleTarget)
+		// samples read
+		// remove callback func because 100% causes audio lag
+		// submit to FFTExecuter directly
+		if (fft_executer)
 		{
-			// out_samples * wfx.nBlockAlign = actual write buffers
-			Array::Clear(boxed_array);
-			Array::Resize(boxed_array, out_samples);
-			for (int i = 0; i < length; ++i)
-				boxed_array[i] = out_buffer[i];
-			write_raw_pcm_bytes_callback->Invoke(boxed_array, out_samples);
+			fft_executer->AddSamplesToRingBuffer(
+				out_buffer,
+				out_samples * wfx.nBlockAlign);
 		}
+
 
 		while (state.BuffersQueued >= 64)
 		{
@@ -1893,16 +1920,6 @@ void MusicPlayerLibrary::MusicPlayerNative::SetSampleRate(int sample_rate)
 	this->sample_rate = sample_rate;
 }
 
-void MusicPlayerLibrary::MusicPlayerNative::RegisterWritePCMBytesCallback(WriteRawPCMBytesCallback^ callback)
-{
-	this->write_raw_pcm_bytes_callback = callback;
-}
-
-void MusicPlayerLibrary::MusicPlayerNative::ClearWritePCMBytesCallback()
-{
-	this->write_raw_pcm_bytes_callback = nullptr;
-}
-
 int MusicPlayerLibrary::MusicPlayerNative::GetNBlockAlign()
 {
 	return wfx.nBlockAlign;
@@ -1984,6 +2001,8 @@ MusicPlayerLibrary::MusicPlayerNative::~MusicPlayerNative()
 	delete playback_state;
 	delete audio_position;
 	if (audio_fifo) 				uninitialize_audio_fifo();
+	reset_av_filter_equalizer();
+	release_audio_context();
 
 	if (audio_playback_section) {
 		DeleteCriticalSection(audio_playback_section);
@@ -2195,20 +2214,6 @@ void MusicPlayerLibrary::MusicPlayer::SeekToPosition(float time, bool need_stop)
 	native_handle->SeekToPosition(time, need_stop);
 }
 
-void MusicPlayerLibrary::MusicPlayer::RegisterWritePCMBytesCallback(WriteRawPCMBytesCallback^ callback)
-{
-	check_if_null();
-	if (callback) {
-		native_handle->RegisterWritePCMBytesCallback(callback);
-	}
-}
-
-void MusicPlayerLibrary::MusicPlayer::ClearWritePCMBytesCallback()
-{
-	check_if_null();
-	native_handle->ClearWritePCMBytesCallback();
-}
-
 int MusicPlayerLibrary::MusicPlayer::GetNBlockAlign()
 {
 	check_if_null();
@@ -2233,6 +2238,18 @@ void MusicPlayerLibrary::MusicPlayer::SetEqualizerBand(int index, int value)
 {
 	check_if_null();
 	native_handle->SetEqualizerBand(index, value);
+}
+
+array<float>^ MusicPlayerLibrary::MusicPlayer::GetAudioFFTData()
+{
+	check_if_null();
+	if (!native_handle->fft_executer)
+		return gcnew array<float>(0);
+	auto data = native_handle->fft_executer->GetAudioFFTData();
+	array<float>^ result = gcnew array<float>(static_cast<int>(data.size()));
+	for (int i = 0; i < static_cast<int>(data.size()); ++i)
+		result[i] = data[i];
+	return result;
 }
 
 // {ddb0472d-c911-4a1f-86d9-dc3d71a95f5a} ISystemMediaTransportControlsInterop

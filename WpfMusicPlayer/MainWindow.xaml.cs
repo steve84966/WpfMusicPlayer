@@ -28,6 +28,7 @@ namespace WpfMusicPlayer
         private bool _isEqualizerOpen;
         private bool _backgroundInitialized;
         private DecodingDialog? _decodingDialog;
+        private readonly DispatcherTimer _spectrumTimer;
 
         public MainWindow()
         {
@@ -47,6 +48,13 @@ namespace WpfMusicPlayer
                 OnSourceInitialized(s, e);
             };
             ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+
+            _spectrumTimer = new DispatcherTimer(DispatcherPriority.Render)
+            {
+                Interval = TimeSpan.FromMilliseconds(16)
+            };
+            _spectrumTimer.Tick += (_, _) => ViewModel.PollSpectrumData();
+            _spectrumTimer.Start();
 
             if (ViewModel.ActiveView != ActiveView.Player)
             {
@@ -191,6 +199,7 @@ namespace WpfMusicPlayer
 
         private void MainWindow_Closed(object sender, EventArgs e)
         {
+            _spectrumTimer.Stop();
             ViewModel.OnWindowClosed();
             ViewModel.Dispose();
         }
