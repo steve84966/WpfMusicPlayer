@@ -679,8 +679,16 @@ public class MainViewModel : ViewModelBase, IDisposable
 
         if (!string.IsNullOrEmpty(lyricsStr))
         {
-            ParseAndAddLocalLyric(lyricsStr);
-            return;
+            try
+            {
+                ParseAndAddLocalLyric(lyricsStr);
+                return;
+            }
+            catch
+            {
+                // ignored
+                // fallback to lrc file read
+            }
         }
 
         var lrcPath = FindBestLrcFile();
