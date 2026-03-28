@@ -1,34 +1,63 @@
 #include "pch.h"
+#include "AtlTraceRedirect.h"
 #include "LocaleConverter.h"
 
 #include <iconv.h>
 #include <uchardet/uchardet.h>
 #include <msclr/marshal_cppstd.h>
-#include <vcclr.h>
 
 CStringA MusicPlayerLibrary::LocaleConverterNative::GetUtf8StringFromBytesNative(const char* input, size_t size)
 {
-    std::vector<char> inbuf(input, input + size);
+    if (!input || size == 0) return "";
+
     auto uc_checker = uchardet_new();
-    int  result = uchardet_handle_data(uc_checker, inbuf.data(), inbuf.size());
+    // 调用者负责约束input的有效性，因此不需要复制
+    uchardet_handle_data(uc_checker, input, size);
     uchardet_data_end(uc_checker);
     const char* charset = uchardet_get_charset(uc_checker);
     ATLTRACE("info: detected charset = %s\n", charset);
-    CStringA outbuf; // place temporary UTF-8 String here
-    size_t insize = size, outsize = size * 2;
-    char* _pindata = (char*)inbuf.data();
-    char* _poutdata = (char*)outbuf.GetBufferSetLength(outsize);
-    iconv_t iconver = iconv_open("utf-8", charset);
-    int  bytes = iconv(iconver, &_pindata, &insize, &_poutdata, &outsize);
-    outbuf.ReleaseBuffer();
-    if (bytes)
-    {
-        return CStringA(input, size);
+    
+    // if is utf-8 or ansi...
+    // ansi is a subset of UTF-8
+    // conversion guard
+    if (!charset || strlen(charset) == 0 || _stricmp(charset, "UTF-8") == 0) {
+        uchardet_delete(uc_checker);
+        return CStringA(input, static_cast<int>(size));
     }
-    else
-    {
-        return outbuf;
+
+    iconv_t iconver = iconv_open("UTF-8", charset);
+    // fix: release uc_checker
+    uchardet_delete(uc_checker);
+
+    if (iconver == reinterpret_cast<iconv_t>(-1)) {
+        return CStringA(input, static_cast<int>(size));
     }
+
+    size_t insize = size;
+    // UTF-8 encoding may expand to 4*in_size
+    size_t outcapacity = size * 4; 
+    size_t outleft = outcapacity;
+    
+    CStringA outbuf;
+    char* pOriginalStart = outbuf.GetBufferSetLength(static_cast<int>(outcapacity));
+    char* pIn = const_cast<char*>(input);
+    char* pOut = pOriginalStart;
+
+    size_t res = iconv(iconver, &pIn, &insize, &pOut, &outleft);
+    
+    // fix: release iconver
+    iconv_close(iconver); 
+
+    if (res == static_cast<size_t>(-1)) {
+        outbuf.ReleaseBuffer(0);
+        return CStringA(input, static_cast<int>(size));
+    }
+
+    // Shrink actualSize to fit
+    int actualSize = static_cast<int>(outcapacity - outleft);
+    outbuf.ReleaseBufferSetLength(actualSize); 
+
+    return outbuf;
 }
 
 CString MusicPlayerLibrary::LocaleConverterNative::GetUtf16StringFromUtf8String(const CStringA& input)
