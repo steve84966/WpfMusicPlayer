@@ -25,6 +25,7 @@ public class MainViewModel : ViewModelBase, IDisposable
     private readonly ISmtcService _smtcService;
     private readonly ISongDatabaseService _songDatabase;
     private readonly ICommandLineParser _commandLineParser;
+    private readonly IPlaylistProvider _playlistProvider;
     private readonly SynchronizationContext _syncContext;
     private MusicPlayer _musicPlayer;
     private string? _currentFilePath;
@@ -36,13 +37,20 @@ public class MainViewModel : ViewModelBase, IDisposable
     private GCLatencyMode _previousLatencyMode;
     private bool _isRestoredFromCommandLine;
 
-    public MainViewModel(IConfigProvider configProvider, IFileDialogService fileDialogService, ISmtcService smtcService, ISongDatabaseService songDatabase, ICommandLineParser commandLineParser)
+    public MainViewModel(
+        IConfigProvider configProvider, 
+        IFileDialogService fileDialogService, 
+        ISmtcService smtcService, 
+        ISongDatabaseService songDatabase, 
+        ICommandLineParser commandLineParser,
+        IPlaylistProvider playlistProvider)
     {
         _configProvider = configProvider;
         _fileDialogService = fileDialogService;
         _smtcService = smtcService;
         _songDatabase = songDatabase;
         _commandLineParser = commandLineParser;
+        _playlistProvider = playlistProvider;
         _syncContext = SynchronizationContext.Current!;
         Equalizer = new EqualizerViewModel(ApplyEqualizerBand);
         Settings = new SettingsViewModel(configProvider);

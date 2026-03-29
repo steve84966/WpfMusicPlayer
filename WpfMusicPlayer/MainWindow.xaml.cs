@@ -39,7 +39,13 @@ namespace WpfMusicPlayer
 
             InitializeComponent();
             var smtcService = new SmtcService();
-            DataContext = new MainViewModel(ConfigProvider.Reader, new FileDialogService(), smtcService, new SongDatabaseService(), new CommandLineParser());
+            DataContext = new MainViewModel( // perform dependency injection
+                ConfigProvider.Reader, 
+                new FileDialogService(), 
+                smtcService, // note: smtc will be initialized in OnSourceInitialized, so we need to hold a reference to it here
+                new SongDatabaseService(), 
+                new CommandLineParser(),
+                new PlaylistProvider());
             AtlTraceRedirectManager.Init();
             SourceInitialized += (s, e) =>
             {
