@@ -15,6 +15,8 @@ public class PlaylistProvider : IPlaylistProvider
 
     private PlaylistRecord _playlist = new();
 
+    public string? CurrentFilePath { get; private set; }
+
     public ErrorCode Load(string filePath)
     {
         try
@@ -28,6 +30,7 @@ public class PlaylistProvider : IPlaylistProvider
                 return ErrorCode.ParseError;
 
             _playlist = record;
+            CurrentFilePath = filePath;
             return ErrorCode.NoError;
         }
         catch (UnauthorizedAccessException)
@@ -54,6 +57,7 @@ public class PlaylistProvider : IPlaylistProvider
         {
             var json = JsonSerializer.Serialize(_playlist, JsonOptions);
             File.WriteAllText(filePath, json);
+            CurrentFilePath = filePath;
             return ErrorCode.NoError;
         }
         catch (UnauthorizedAccessException)

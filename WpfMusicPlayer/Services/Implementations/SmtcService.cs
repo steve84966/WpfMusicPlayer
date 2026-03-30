@@ -131,26 +131,6 @@ public class SmtcService : ISmtcService
         };
     }
 
-    public void UpdateTimeline(TimeSpan position, TimeSpan duration)
-    {
-        if (_smtc == null) return;
-        try
-        {
-            _smtc.UpdateTimelineProperties(new SystemMediaTransportControlsTimelineProperties
-            {
-                StartTime = TimeSpan.Zero,
-                MinSeekTime = TimeSpan.Zero,
-                Position = position,
-                MaxSeekTime = duration,
-                EndTime = duration
-            });
-        }
-        catch
-        {
-            // Timeline not supported on this OS version
-        }
-    }
-
     public void Dispose()
     {
         if (_smtc == null) return;

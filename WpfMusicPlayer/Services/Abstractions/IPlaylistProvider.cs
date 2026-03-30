@@ -14,6 +14,8 @@ public interface IPlaylistProvider
         UnknownError
     }
 
+    string? CurrentFilePath { get; }
+
     ErrorCode Load(string filePath);
 
     ErrorCode Save(string filePath);

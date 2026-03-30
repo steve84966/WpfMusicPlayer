@@ -14,7 +14,7 @@
         AllowDrop="True"
         MinWidth="400" MinHeight="450"
         Drop="MainWindow_Drop"
-        Closed="MainWindow_Closed"
+        Closing="MainWindow_Closing"
         SizeChanged="MainWindow_SizeChanged">
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="32"

@@ -21,6 +21,5 @@ public interface ISmtcService : IDisposable
     void UpdateMetadata(string title, string artist, Stream? albumArtStream);
     void UpdateTextMetadata(string title, string artist);
     void UpdatePlaybackStatus(PlaybackState state);
-    void UpdateTimeline(TimeSpan position, TimeSpan duration);
 }
 

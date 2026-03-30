@@ -203,8 +203,34 @@ namespace WpfMusicPlayer
             return null;
         }
 
-        private void MainWindow_Closed(object sender, EventArgs e)
+        private bool _closeConfirmed;
+
+        private async void MainWindow_Closing(object sender, CancelEventArgs e)
         {
+            if (_closeConfirmed) return;
+
+            if (ViewModel.HasUnsavedPlaylistChanges)
+            {
+                var result = WpfMessageBox.Show(
+                    "播放列表有未保存的更改，是否保存？",
+                    "确认",
+                    WpfMessageBoxButton.YesNoCancel,
+                    WpfMessageBoxIcon.Question);
+
+                switch (result)
+                {
+                    case WpfMessageBoxResult.Yes:
+                        e.Cancel = true;
+                        await ViewModel.SavePlaylistAsync();
+                        _closeConfirmed = true;
+                        Close();
+                        return;
+                    case WpfMessageBoxResult.Cancel:
+                        e.Cancel = true;
+                        return;
+                }
+            }
+
             _spectrumTimer.Stop();
             ViewModel.OnWindowClosed();
             ViewModel.Dispose();
