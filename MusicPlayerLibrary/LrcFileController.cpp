@@ -120,6 +120,9 @@ CSimpleArray<CString> SplitLrcForProgressMultiNode2(const CSimpleArray<CString>&
     return strs;
 }
 
+static const std::initializer_list<CString> chinese_aux_lyric_start = {
+    _T("作词:"), _T("作词："), _T("作曲:"), _T("作曲："), _T("词:"), _T("词："), _T("曲:"), _T("曲：")
+};
 
 LrcMultiNode::LrcMultiNode(int t, const CSimpleArray<CString>& texts) :
     LrcAbstractNode(t), str_count(texts.GetSize()), lrc_texts(texts)
@@ -176,7 +179,29 @@ LrcMultiNode::LrcMultiNode(int t, const CSimpleArray<CString>& texts) :
         if (jp_index != -1 || kr_index != -1 || eng_index != -1 && lang_types[zh_index] == LrcLanguageHelper::LanguageType::zh)
         {
 //            ATLTRACE(_T("info: translation hit, line %s\n"), texts[zh_index].GetString());
+            // 如果以“词：”/“词:”/“曲：”/“曲:”/“作词：”/“作词:”/“作曲：”/“作曲:”开头，视中文为歌词，将英语移动至翻译/罗马音
             aux_infos[zh_index] = LrcAuxiliaryInfoNative::Translation;
+            for (const auto& chn_start: chinese_aux_lyric_start)
+            {
+                if (lrc_texts[zh_index].Find(chn_start) == 0)
+                {
+                    aux_infos[zh_index] = LrcAuxiliaryInfoNative::Lyric;
+                    if (eng_index != -1)
+                    {
+                        float eng_prob, romaji_prob;
+                        LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index], &eng_prob, &romaji_prob);
+                        if (eng_prob < romaji_prob)
+                        {
+                            aux_infos[eng_index] = LrcAuxiliaryInfoNative::Romanization;
+                        }
+                        else
+                        {
+                            aux_infos[eng_index] = LrcAuxiliaryInfoNative::Translation;
+                        }
+                    }
+                    break;
+                }
+            }
         }
         else
         {
@@ -314,6 +339,20 @@ LrcLanguageHelper::detect_language_type(const CString& input, float* probability
 
     if (zh > 0 && en > 0)
     {
+        // 过滤非英文字符
+        CString eng_str;
+        for (int i = 0; i < input.GetLength(); ++i) {
+            if (wchar_t ch = input[i]; ch <= 0x007F)
+                eng_str.AppendChar(ch);
+        }
+        float eng_prob, romaji_prob;
+        // 允许罗马音内包含部分中文字符，所以进行前置判断
+        detect_eng_vs_jpn_romaji_prob(eng_str, &eng_prob, &romaji_prob);
+        // 罗马音单音节最大长度为3，超过3则判断其中是否包含空格，包含空格再按罗马音处理
+        if (eng_prob < romaji_prob && (eng_str.GetLength() <= 3 || eng_str.Find(_T(' ')) != -1)) {
+            write_prob(_T("en"), en_score / length);
+            return LanguageType::en;
+        }
         write_prob(_T("zh"), zh_score / length);
         return LanguageType::zh;
     }
