@@ -1802,7 +1802,8 @@ bool MusicPlayerLibrary::MusicPlayerNative::IsInitialized()
 
 bool MusicPlayerLibrary::MusicPlayerNative::IsPlaying()
 {
-	return *playback_state != audio_playback_state_init && *playback_state != audio_playback_state_stopped;
+	return IsInitialized() &&
+		*playback_state != audio_playback_state_init && *playback_state != audio_playback_state_stopped;
 }
 
 void MusicPlayerLibrary::MusicPlayerNative::OpenFile(const CString& fileName, const CString& file_extension_in)

@@ -15,6 +15,8 @@ namespace WpfMusicPlayer.ViewModels;
 
 public enum ActiveView { Player, Playlist, Settings }
 
+public enum PlayMode { Sequential, ListLoop, SingleLoop, Shuffle }
+
 public class MainViewModel : ViewModelBase, IDisposable
 {
     // 业务逻辑在这里写
@@ -27,6 +29,9 @@ public class MainViewModel : ViewModelBase, IDisposable
     private readonly ICommandLineParser _commandLineParser;
     private readonly IPlaylistProvider _playlistProvider;
     private readonly SynchronizationContext _syncContext;
+    private readonly Random _shuffleRandom = new();
+    private readonly Stack<string> _shuffleHistory = new();
+    private readonly object _openFileLock = new();
     private MusicPlayer _musicPlayer;
     private string? _currentFilePath;
     private string? _currentMd5;
@@ -38,6 +43,7 @@ public class MainViewModel : ViewModelBase, IDisposable
     private bool _isRestoredFromCommandLine;
     private bool _isPlaylistUserOpened;
     private bool _isPlaylistDirty;
+    private bool _disableAutoAdvance;
 
     public MainViewModel(
         IConfigProvider configProvider, 
@@ -67,9 +73,9 @@ public class MainViewModel : ViewModelBase, IDisposable
 
         PlayPauseCommand = new RelayCommand(OnPlayPause, () => !IsDecoding);
         OpenCommand = new RelayCommand(async () => await OnOpenAsync());
-        PrevCommand = new RelayCommand(() => { });
-        NextCommand = new RelayCommand(() => { });
-        PlayModeCommand = new RelayCommand(() => { });
+        PrevCommand = new RelayCommand(OnPrev);
+        NextCommand = new RelayCommand(OnNext);
+        PlayModeCommand = new RelayCommand(OnPlayModeToggle);
         PlaylistCommand = new RelayCommand(OnTogglePlaylist);
         TranslateCommand = new RelayCommand(OnToggleTranslation, () => HasTranslationAvailable);
         RomanjiCommand = new RelayCommand(OnToggleRomanji, () => HasRomanjiAvailable);
@@ -244,13 +250,11 @@ public class MainViewModel : ViewModelBase, IDisposable
         get;
         set
         {
-            if (SetProperty(ref field, value))
-            {
-                _playlistProvider.GetPlaylist().Name = value;
+            if (!SetProperty(ref field, value)) return;
+            _playlistProvider.GetPlaylist().Name = value;
                 
-                _isPlaylistUserOpened = true;
-                _isPlaylistDirty = true;
-            }
+            _isPlaylistUserOpened = true;
+            _isPlaylistDirty = true;
         }
     } = "播放列表";
 
@@ -274,11 +278,37 @@ public class MainViewModel : ViewModelBase, IDisposable
         private set => SetProperty(ref field, value);
     }
 
-    // for RebootApplication to build command line args
-    public bool IsMusicPlaying
+    public PlayMode CurrentPlayMode
     {
-        get => _musicPlayer.IsPlaying();
+        get;
+        private set
+        {
+            if (!SetProperty(ref field, value)) return;
+            OnPropertyChanged(nameof(PlayModeContent));
+            OnPropertyChanged(nameof(PlayModeTooltip));
+        }
     }
+
+    public string PlayModeContent => CurrentPlayMode switch
+    {
+        PlayMode.Sequential => "\u27A1",
+        PlayMode.ListLoop => "\U0001F501",
+        PlayMode.SingleLoop => "\U0001F502",
+        PlayMode.Shuffle => "\U0001F500",
+        _ => "\u27A1"
+    };
+
+    public string PlayModeTooltip => CurrentPlayMode switch
+    {
+        PlayMode.Sequential => "顺序播放",
+        PlayMode.ListLoop => "列表循环",
+        PlayMode.SingleLoop => "单曲循环",
+        PlayMode.Shuffle => "随机播放",
+        _ => "顺序播放"
+    };
+
+    // for RebootApplication to build command line args
+    public bool IsMusicPlaying => _musicPlayer.IsPlaying();
 
     public ICommand PlayPauseCommand { get; }
     public ICommand OpenCommand { get; }
@@ -296,37 +326,41 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     public void OpenFile(string filePath)
     {
-        if (ActiveView != ActiveView.Player
-            && ActiveView != ActiveView.Playlist
-            && !_isRestoredFromCommandLine)
+        // 避免对_musicPlayer的重复析构
+        lock (_openFileLock)
         {
-            _isRestoredFromCommandLine = false;
-            _syncContext.Send(_ => ActiveView = ActiveView.Player, null);
-        }
-
-
-        var isNcm = Path.GetExtension(filePath).Equals(".ncm", StringComparison.OrdinalIgnoreCase);
-        if (isNcm)
-        {
-            _syncContext.Send(_ => IsDecoding = true, null);
-        }
-        try
-        {
-            _currentFilePath = filePath;
-            _currentMd5 = ComputeFileMd5(filePath);
-            _musicPlayer.Dispose();
-            _musicPlayer = new MusicPlayer(_sampleRate);
-            SubscribePlayerEvents();
-            _musicPlayer.OpenFile(filePath);
-            if (!_enableAutoPlay)
+            if (ActiveView != ActiveView.Player
+                && ActiveView != ActiveView.Playlist
+                && !_isRestoredFromCommandLine)
             {
-                _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
+                _isRestoredFromCommandLine = false;
+                _syncContext.Send(_ => ActiveView = ActiveView.Player, null);
             }
-        }
-        catch
-        {
-            _syncContext.Send(_ => IsDecoding = false, null);
-            throw;
+
+
+            var isNcm = Path.GetExtension(filePath).Equals(".ncm", StringComparison.OrdinalIgnoreCase);
+            if (isNcm)
+            {
+                _syncContext.Send(_ => IsDecoding = true, null);
+            }
+            try
+            {
+                _currentFilePath = filePath;
+                _currentMd5 = ComputeFileMd5(filePath);
+                _musicPlayer.Dispose();
+                _musicPlayer = new MusicPlayer(_sampleRate);
+                SubscribePlayerEvents();
+                _musicPlayer.OpenFile(filePath);
+                if (!_enableAutoPlay)
+                {
+                    _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
+                }
+            }
+            catch
+            {
+                _syncContext.Send(_ => IsDecoding = false, null);
+                throw;
+            }
         }
     }
 
@@ -654,16 +688,21 @@ public class MainViewModel : ViewModelBase, IDisposable
             CurrentTime = "0:00";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Stopped);
             
-            if (CurrentLyricIndex < 0 || CurrentLyricIndex >= Lyrics.Count) return;
-            Lyrics[CurrentLyricIndex].IsHighlighted = false;
-            Lyrics[CurrentLyricIndex].Progress = 0;
-            CurrentLyricIndex = 0;
-            Lyrics[CurrentLyricIndex].IsHighlighted = true;
-            if (_lrcFileController != null && CurrentLyricIndex >= 0 && CurrentLyricIndex < Lyrics.Count
-                                       && Lyrics[CurrentLyricIndex].IsProgressEnabled)
+            if (CurrentLyricIndex >= 0 && CurrentLyricIndex < Lyrics.Count)
             {
-                Lyrics[CurrentLyricIndex].Progress = _lrcFileController.GetLrcPercentage(CurrentLyricIndex);
+                Lyrics[CurrentLyricIndex].IsHighlighted = false;
+                Lyrics[CurrentLyricIndex].Progress = 0;
+                CurrentLyricIndex = 0;
+                Lyrics[CurrentLyricIndex].IsHighlighted = true;
+                if (_lrcFileController != null && CurrentLyricIndex >= 0 && CurrentLyricIndex < Lyrics.Count
+                                           && Lyrics[CurrentLyricIndex].IsProgressEnabled)
+                {
+                    Lyrics[CurrentLyricIndex].Progress = _lrcFileController.GetLrcPercentage(CurrentLyricIndex);
+                }
             }
+            if (!_disableAutoAdvance)
+                AutoAdvance();
+            _disableAutoAdvance = false;
         }, null);
     }
 
@@ -675,6 +714,187 @@ public class MainViewModel : ViewModelBase, IDisposable
     private void OnToggleRomanji()
     {
         IsRomanjiVisible = !IsRomanjiVisible;
+    }
+
+    private void OnPlayModeToggle()
+    {
+        CurrentPlayMode = CurrentPlayMode switch
+        {
+            PlayMode.Sequential => PlayMode.ListLoop,
+            PlayMode.ListLoop => PlayMode.SingleLoop,
+            PlayMode.SingleLoop => PlayMode.Shuffle,
+            _ => PlayMode.Sequential
+        };
+        _shuffleHistory.Clear();
+    }
+
+    private void OnPrev()
+    {
+        if (PlaylistItems.Count == 0)
+        {
+            StopPlayback();
+            return;
+        }
+
+        if (CurrentPlayMode == PlayMode.Shuffle)
+        {
+            if (_shuffleHistory.Count > 0)
+            {
+                var prevPath = _shuffleHistory.Pop();
+                PlaySongByPath(prevPath);
+            }
+            else
+            {
+                StopPlayback();
+            }
+            return;
+        }
+
+        var currentIndex = GetCurrentPlaylistIndex();
+        if (currentIndex < 0)
+        {
+            StopPlayback();
+            return;
+        }
+
+        if (CurrentPlayMode == PlayMode.SingleLoop)
+        {
+            PlaySongByPath(PlaylistItems[currentIndex].FilePath);
+            return;
+        }
+
+        var prevIndex = currentIndex - 1;
+        if (prevIndex < 0)
+        {
+            if (CurrentPlayMode == PlayMode.ListLoop)
+            {
+                prevIndex = PlaylistItems.Count - 1;
+            }
+            else
+            {
+                StopPlayback();
+                return;
+            }
+        }
+
+        PlaySongByPath(PlaylistItems[prevIndex].FilePath);
+    }
+
+    private void OnNext()
+    {
+        if (PlaylistItems.Count == 0)
+        {
+            StopPlayback();
+            return;
+        }
+
+        if (CurrentPlayMode == PlayMode.Shuffle)
+        {
+            if (_currentFilePath != null)
+                _shuffleHistory.Push(_currentFilePath);
+
+            if (PlaylistItems.Count == 1)
+            {
+                PlaySongByPath(PlaylistItems[0].FilePath);
+                return;
+            }
+
+            int nextIndex;
+            var currentIndex = GetCurrentPlaylistIndex();
+            do
+            {
+                nextIndex = _shuffleRandom.Next(PlaylistItems.Count);
+            } while (nextIndex == currentIndex && PlaylistItems.Count > 1);
+
+            PlaySongByPath(PlaylistItems[nextIndex].FilePath);
+            return;
+        }
+
+        var curIndex = GetCurrentPlaylistIndex();
+        if (curIndex < 0)
+        {
+            StopPlayback();
+            return;
+        }
+
+        if (CurrentPlayMode == PlayMode.SingleLoop)
+        {
+            PlaySongByPath(PlaylistItems[curIndex].FilePath);
+            return;
+        }
+
+        var nextIdx = curIndex + 1;
+        if (nextIdx >= PlaylistItems.Count)
+        {
+            if (CurrentPlayMode == PlayMode.ListLoop)
+            {
+                nextIdx = 0;
+            }
+            else
+            {
+                // 顺序播放在下一曲不可用时停止
+                StopPlayback();
+                return;
+            }
+        }
+
+        PlaySongByPath(PlaylistItems[nextIdx].FilePath);
+    }
+
+    private void AutoAdvance()
+    {
+        if (PlaylistItems.Count == 0) return;
+
+        switch (CurrentPlayMode)
+        {
+            case PlayMode.SingleLoop:
+                if (_currentFilePath != null)
+                    PlaySongByPath(_currentFilePath);
+                break;
+            case PlayMode.Sequential:
+            case PlayMode.ListLoop:
+            case PlayMode.Shuffle:
+                OnNext();
+                break;
+        }
+    }
+
+    private int GetCurrentPlaylistIndex()
+    {
+        if (_currentFilePath == null) return -1;
+        for (var i = 0; i < PlaylistItems.Count; i++)
+        {
+            if (PlaylistItems[i].FilePath == _currentFilePath)
+                return i;
+        }
+        return -1;
+    }
+
+    private void PlaySongByPath(string filePath)
+    {
+        _enableAutoPlay = true;
+        try
+        {
+            Task.Run(() => OpenFile(filePath));
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show($"{ex.Message}\n{filePath}", "Error", WpfMessageBoxIcon.Error);
+        }
+    }
+
+    // 手动触发停止播放，不进行AutoAdvance
+    private void StopPlayback()
+    {
+        _disableAutoAdvance = true;
+        if (_musicPlayer.IsInitialized() && _musicPlayer.IsPlaying())
+        {
+            _musicPlayer.Stop();
+        }
+        else
+        {
+            _disableAutoAdvance = false;
+        }
     }
 
     private async void OnPlayPause()
@@ -808,10 +1028,7 @@ public class MainViewModel : ViewModelBase, IDisposable
             if (PlaylistItems.Count > 0)
             {
                 var first = PlaylistItems[0];
-                if (IsMusicPlaying)
-                {
-                    _enableAutoPlay = true;
-                }
+                _enableAutoPlay = IsMusicPlaying;
 
                 await Task.Run(() => OpenFile(first.FilePath));
             }
