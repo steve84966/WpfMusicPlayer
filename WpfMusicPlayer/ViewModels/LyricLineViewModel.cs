@@ -1,6 +1,8 @@
-﻿namespace WpfMusicPlayer.ViewModels;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 
-public class LyricLineViewModel(string text, int timeMs = -1, string? translation = null, string? romanji = null) : ViewModelBase
+namespace WpfMusicPlayer.ViewModels;
+
+public partial class LyricLineViewModel(string text, int timeMs = -1, string? translation = null, string? romanji = null) : ObservableObject
 {
     public string Text { get; } = text;
 
@@ -14,18 +16,12 @@ public class LyricLineViewModel(string text, int timeMs = -1, string? translatio
 
     public bool HasRomanji => Romanji != null;
 
-    public bool IsHighlighted
-    {
-        get;
-        set => SetProperty(ref field, value);
-    }
+    [ObservableProperty]
+    public partial bool IsHighlighted { get; set; }
 
     public bool IsProgressEnabled { get; init; }
 
-    public double Progress
-    {
-        get;
-        set => SetProperty(ref field, value);
-    }
+    [ObservableProperty]
+    public partial double Progress { get; set; }
 }
 

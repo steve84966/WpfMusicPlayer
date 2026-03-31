@@ -1,28 +1,20 @@
 using System.Windows.Media.Imaging;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace WpfMusicPlayer.ViewModels;
 
-public class PlaylistItemViewModel(string filePath, string title, string artist, int playedCount) : ViewModelBase
+public partial class PlaylistItemViewModel(string filePath, string title, string artist, int playedCount) : ObservableObject
 {
     public string FilePath { get; } = filePath;
     public string Title { get; } = title;
     public string Artist { get; } = artist;
     // 删除duration，改为播放次数
-    public int PlayedCount
-    {
-        get;
-        set => SetProperty(ref field, value);
-    } = playedCount;
+    [ObservableProperty]
+    public partial int PlayedCount { get; set; } = playedCount;
 
-    public BitmapImage? AlbumCover
-    {
-        get;
-        set => SetProperty(ref field, value);
-    }
+    [ObservableProperty]
+    public partial BitmapImage? AlbumCover { get; set; }
 
-    public bool IsPlaying
-    {
-        get;
-        set => SetProperty(ref field, value);
-    }
+    [ObservableProperty]
+    public partial bool IsPlaying { get; set; }
 }

@@ -9,10 +9,8 @@ namespace WpfMusicPlayer.Services.Implementations
 {
     public class ConfigProvider : IConfigProvider
     {
-        private static readonly Lazy<ConfigProvider> _reader = new Lazy<ConfigProvider>(() => new ConfigProvider());
-        public static ConfigProvider Reader => _reader.Value;
+        public ConfigProvider(string configFileName = "config.xml") => Reload(configFileName);
 
-        private ConfigProvider(string configFileName = "config.xml") => Reload(configFileName);
         ~ConfigProvider()
         {
             WriteFile();

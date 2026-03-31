@@ -18,6 +18,7 @@ public interface ISmtcService : IDisposable
     event Action NextRequested;
     event Action PreviousRequested;
 
+    void Initialize(IntPtr handle);
     void UpdateMetadata(string title, string artist, Stream? albumArtStream);
     void UpdateTextMetadata(string title, string artist);
     void UpdatePlaybackStatus(PlaybackState state);

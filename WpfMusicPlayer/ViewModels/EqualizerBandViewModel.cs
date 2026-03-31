@@ -1,6 +1,8 @@
-﻿namespace WpfMusicPlayer.ViewModels;
+﻿using CommunityToolkit.Mvvm.ComponentModel;
 
-public class EqualizerBandViewModel(int index, string label, Action<int, int> onValueChanged) : ViewModelBase
+namespace WpfMusicPlayer.ViewModels;
+
+public class EqualizerBandViewModel(int index, string label, Action<int, int> onValueChanged) : ObservableObject
 {
     private readonly Action<int, int> _onValueChanged = onValueChanged;
     private readonly int _index = index;
@@ -13,11 +15,9 @@ public class EqualizerBandViewModel(int index, string label, Action<int, int> on
         set
         {
             value = Math.Clamp(value, -12, 12);
-            if (SetProperty(ref field, value))
-            {
-                OnPropertyChanged(nameof(DisplayValue));
-                _onValueChanged(_index, value);
-            }
+            if (!SetProperty(ref field, value)) return;
+            OnPropertyChanged(nameof(DisplayValue));
+            _onValueChanged(_index, value);
         }
     }
 
