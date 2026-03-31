@@ -1802,7 +1802,8 @@ bool MusicPlayerLibrary::MusicPlayerNative::IsInitialized()
 
 bool MusicPlayerLibrary::MusicPlayerNative::IsPlaying()
 {
-	return *playback_state != audio_playback_state_init && *playback_state != audio_playback_state_stopped;
+	return IsInitialized() &&
+		*playback_state != audio_playback_state_init && *playback_state != audio_playback_state_stopped;
 }
 
 void MusicPlayerLibrary::MusicPlayerNative::OpenFile(const CString& fileName, const CString& file_extension_in)
@@ -2049,6 +2050,9 @@ void MusicPlayerLibrary::MusicPlayer::check_if_null()
 
 void MusicPlayerLibrary::MusicPlayer::ProcessEvent(MessageType event_type, WPARAM wParam, LPARAM lParam)
 {
+	if (!native_handle)
+		return; // 析构后或尚未初始化，安静忽略
+	
 	if (event_type == WM_PLAYER_TIME_CHANGE && native_handle && native_handle->suppress_time_events)
 		return;
 
@@ -2061,7 +2065,9 @@ void MusicPlayerLibrary::MusicPlayer::ProcessEvent(MessageType event_type, WPARA
 }
 
 void MusicPlayerLibrary::MusicPlayer::ProcessEventCore(Object^ stateObj)
-{
+{	
+	if (!native_handle)
+		return; // native 已被销毁，跳过
 	ProcessEventState^ state = safe_cast<ProcessEventState^>(stateObj);
 	WPARAM wParam = static_cast<WPARAM>(state->WParam.ToInt64());
 
@@ -2114,13 +2120,13 @@ void MusicPlayerLibrary::MusicPlayer::ProcessEventCore(Object^ stateObj)
 
 bool MusicPlayerLibrary::MusicPlayer::IsInitialized()
 {
-	check_if_null();
+	if (!is_native_valid()) return false;
 	return native_handle->IsInitialized();
 }
 
 bool MusicPlayerLibrary::MusicPlayer::IsPlaying()
 {
-	check_if_null();
+	if (!is_native_valid()) return false;
 	return native_handle->IsPlaying();
 }
 
@@ -2157,19 +2163,19 @@ void MusicPlayerLibrary::MusicPlayer::OpenFile(const System::String^ fileName)
 
 float MusicPlayerLibrary::MusicPlayer::GetMusicTimeLength()
 {
-	check_if_null();
+	if (!is_native_valid()) return 0.0f;
 	return native_handle->GetMusicTimeLength();
 }
 
 float MusicPlayerLibrary::MusicPlayer::GetCurrentMusicPosition()
 {
-	check_if_null();
+	if (!is_native_valid()) return 0.0f;
 	return native_handle->GetCurrentMusicPosition();
 }
 
 System::String^ MusicPlayerLibrary::MusicPlayer::GetSongTitle()
 {
-	check_if_null();
+	if (!is_native_valid()) return nullptr;
 	CString title = native_handle->GetSongTitle();
 	// TODO: 在此处插入 return 语句
 	if (title.IsEmpty()) return nullptr;
@@ -2178,7 +2184,7 @@ System::String^ MusicPlayerLibrary::MusicPlayer::GetSongTitle()
 
 System::String^ MusicPlayerLibrary::MusicPlayer::GetSongArtist()
 {
-	check_if_null();
+	if (!is_native_valid()) return nullptr;
 	CString artist = native_handle->GetSongArtist();
 	// TODO: 在此处插入 return 语句
 	if (artist.IsEmpty()) return nullptr;
@@ -2217,13 +2223,13 @@ void MusicPlayerLibrary::MusicPlayer::SeekToPosition(float time, bool need_stop)
 
 int MusicPlayerLibrary::MusicPlayer::GetNBlockAlign()
 {
-	check_if_null();
+	if (!is_native_valid()) return -1;
 	return native_handle->GetNBlockAlign();
 }
 
 System::String^ MusicPlayerLibrary::MusicPlayer::GetID3Lyric()
 {
-	check_if_null();
+	if (!is_native_valid()) return nullptr;
 	CString lyric = native_handle->GetID3Lyric();
 	// TODO: 在此处插入 return 语句
 	return msclr::interop::marshal_as<System::String^>(lyric.GetString());
@@ -2231,7 +2237,7 @@ System::String^ MusicPlayerLibrary::MusicPlayer::GetID3Lyric()
 
 int MusicPlayerLibrary::MusicPlayer::GetEqualizerBand(int index)
 {
-	check_if_null();
+	if (!is_native_valid()) return 0;
 	return native_handle->GetEqualizerBand(index);
 }
 
@@ -2243,7 +2249,8 @@ void MusicPlayerLibrary::MusicPlayer::SetEqualizerBand(int index, int value)
 
 array<float>^ MusicPlayerLibrary::MusicPlayer::GetAudioFFTData()
 {
-	check_if_null();
+	if (!is_native_valid())
+		return gcnew array<float>(0);
 	if (!native_handle->fft_executer)
 		return gcnew array<float>(0);
 	auto data = native_handle->fft_executer->GetAudioFFTData();

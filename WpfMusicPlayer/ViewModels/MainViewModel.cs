@@ -15,6 +15,8 @@ namespace WpfMusicPlayer.ViewModels;
 
 public enum ActiveView { Player, Playlist, Settings }
 
+public enum PlayMode { Sequential, ListLoop, SingleLoop, Shuffle }
+
 public class MainViewModel : ViewModelBase, IDisposable
 {
     // 业务逻辑在这里写
@@ -25,7 +27,11 @@ public class MainViewModel : ViewModelBase, IDisposable
     private readonly ISmtcService _smtcService;
     private readonly ISongDatabaseService _songDatabase;
     private readonly ICommandLineParser _commandLineParser;
+    private readonly IPlaylistProvider _playlistProvider;
     private readonly SynchronizationContext _syncContext;
+    private readonly Random _shuffleRandom = new();
+    private readonly Stack<string> _shuffleHistory = new();
+    private readonly object _openFileLock = new();
     private MusicPlayer _musicPlayer;
     private string? _currentFilePath;
     private string? _currentMd5;
@@ -35,14 +41,24 @@ public class MainViewModel : ViewModelBase, IDisposable
     private float? _pendingSeekTime;
     private GCLatencyMode _previousLatencyMode;
     private bool _isRestoredFromCommandLine;
+    private bool _isPlaylistUserOpened;
+    private bool _isPlaylistDirty;
+    private bool _disableAutoAdvance;
 
-    public MainViewModel(IConfigProvider configProvider, IFileDialogService fileDialogService, ISmtcService smtcService, ISongDatabaseService songDatabase, ICommandLineParser commandLineParser)
+    public MainViewModel(
+        IConfigProvider configProvider, 
+        IFileDialogService fileDialogService, 
+        ISmtcService smtcService, 
+        ISongDatabaseService songDatabase, 
+        ICommandLineParser commandLineParser,
+        IPlaylistProvider playlistProvider)
     {
         _configProvider = configProvider;
         _fileDialogService = fileDialogService;
         _smtcService = smtcService;
         _songDatabase = songDatabase;
         _commandLineParser = commandLineParser;
+        _playlistProvider = playlistProvider;
         _syncContext = SynchronizationContext.Current!;
         Equalizer = new EqualizerViewModel(ApplyEqualizerBand);
         Settings = new SettingsViewModel(configProvider);
@@ -57,12 +73,19 @@ public class MainViewModel : ViewModelBase, IDisposable
 
         PlayPauseCommand = new RelayCommand(OnPlayPause, () => !IsDecoding);
         OpenCommand = new RelayCommand(async () => await OnOpenAsync());
-        PrevCommand = new RelayCommand(() => { });
-        NextCommand = new RelayCommand(() => { });
-        PlayModeCommand = new RelayCommand(() => { });
+        PrevCommand = new RelayCommand(OnPrev);
+        NextCommand = new RelayCommand(OnNext);
+        PlayModeCommand = new RelayCommand(OnPlayModeToggle);
         PlaylistCommand = new RelayCommand(OnTogglePlaylist);
         TranslateCommand = new RelayCommand(OnToggleTranslation, () => HasTranslationAvailable);
         RomanjiCommand = new RelayCommand(OnToggleRomanji, () => HasRomanjiAvailable);
+        OpenPlaylistCommand = new RelayCommand(async () => await OnOpenPlaylistAsync());
+        SavePlaylistCommand = new RelayCommand(async () => await SavePlaylistAsync());
+        AddSongToPlaylistCommand = new RelayCommand(async () => await OnAddSongToPlaylistAsync());
+        RemoveSongFromPlaylistCommand = new RelayCommand(
+            obj => OnRemoveSongFromPlaylist(obj as PlaylistItemViewModel),
+            obj => obj is PlaylistItemViewModel);
+        ChangePlaylistCoverCommand = new RelayCommand(async () => await OnChangePlaylistCoverAsync());
     }
 
     private void RestoreSettingsFromCommandLine()
@@ -222,6 +245,25 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     public ObservableCollection<PlaylistItemViewModel> PlaylistItems { get; } = [];
 
+    public string PlaylistTitle
+    {
+        get;
+        set
+        {
+            if (!SetProperty(ref field, value)) return;
+            _playlistProvider.GetPlaylist().Name = value;
+                
+            _isPlaylistUserOpened = true;
+            _isPlaylistDirty = true;
+        }
+    } = "播放列表";
+
+    public BitmapImage? PlaylistCoverImage
+    {
+        get;
+        private set => SetProperty(ref field, value);
+    }
+
     public ActiveView ActiveView
     {
         get;
@@ -236,11 +278,37 @@ public class MainViewModel : ViewModelBase, IDisposable
         private set => SetProperty(ref field, value);
     }
 
-    // for RebootApplication to build command line args
-    public bool IsMusicPlaying
+    public PlayMode CurrentPlayMode
     {
-        get => _musicPlayer.IsPlaying();
+        get;
+        private set
+        {
+            if (!SetProperty(ref field, value)) return;
+            OnPropertyChanged(nameof(PlayModeContent));
+            OnPropertyChanged(nameof(PlayModeTooltip));
+        }
     }
+
+    public string PlayModeContent => CurrentPlayMode switch
+    {
+        PlayMode.Sequential => "\u27A1",
+        PlayMode.ListLoop => "\U0001F501",
+        PlayMode.SingleLoop => "\U0001F502",
+        PlayMode.Shuffle => "\U0001F500",
+        _ => "\u27A1"
+    };
+
+    public string PlayModeTooltip => CurrentPlayMode switch
+    {
+        PlayMode.Sequential => "顺序播放",
+        PlayMode.ListLoop => "列表循环",
+        PlayMode.SingleLoop => "单曲循环",
+        PlayMode.Shuffle => "随机播放",
+        _ => "顺序播放"
+    };
+
+    // for RebootApplication to build command line args
+    public bool IsMusicPlaying => _musicPlayer.IsPlaying();
 
     public ICommand PlayPauseCommand { get; }
     public ICommand OpenCommand { get; }
@@ -250,40 +318,49 @@ public class MainViewModel : ViewModelBase, IDisposable
     public ICommand TranslateCommand { get; }
     public ICommand RomanjiCommand { get; }
     public ICommand PlaylistCommand { get; }
+    public ICommand OpenPlaylistCommand { get; }
+    public ICommand SavePlaylistCommand { get; }
+    public ICommand AddSongToPlaylistCommand { get; }
+    public ICommand RemoveSongFromPlaylistCommand { get; }
+    public ICommand ChangePlaylistCoverCommand { get; }
 
     public void OpenFile(string filePath)
     {
-        if (ActiveView != ActiveView.Player
-            && ActiveView != ActiveView.Playlist
-            && !_isRestoredFromCommandLine)
+        // 避免对_musicPlayer的重复析构
+        lock (_openFileLock)
         {
-            _isRestoredFromCommandLine = false;
-            _syncContext.Send(_ => ActiveView = ActiveView.Player, null);
-        }
-
-
-        var isNcm = Path.GetExtension(filePath).Equals(".ncm", StringComparison.OrdinalIgnoreCase);
-        if (isNcm)
-        {
-            _syncContext.Send(_ => IsDecoding = true, null);
-        }
-        try
-        {
-            _currentFilePath = filePath;
-            _currentMd5 = ComputeFileMd5(filePath);
-            _musicPlayer.Dispose();
-            _musicPlayer = new MusicPlayer(_sampleRate);
-            SubscribePlayerEvents();
-            _musicPlayer.OpenFile(filePath);
-            if (!_enableAutoPlay)
+            if (ActiveView != ActiveView.Player
+                && ActiveView != ActiveView.Playlist
+                && !_isRestoredFromCommandLine)
             {
-                _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
+                _isRestoredFromCommandLine = false;
+                _syncContext.Send(_ => ActiveView = ActiveView.Player, null);
             }
-        }
-        catch
-        {
-            _syncContext.Send(_ => IsDecoding = false, null);
-            throw;
+
+
+            var isNcm = Path.GetExtension(filePath).Equals(".ncm", StringComparison.OrdinalIgnoreCase);
+            if (isNcm)
+            {
+                _syncContext.Send(_ => IsDecoding = true, null);
+            }
+            try
+            {
+                _currentFilePath = filePath;
+                _currentMd5 = ComputeFileMd5(filePath);
+                _musicPlayer.Dispose();
+                _musicPlayer = new MusicPlayer(_sampleRate);
+                SubscribePlayerEvents();
+                _musicPlayer.OpenFile(filePath);
+                if (!_enableAutoPlay)
+                {
+                    _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
+                }
+            }
+            catch
+            {
+                _syncContext.Send(_ => IsDecoding = false, null);
+                throw;
+            }
         }
     }
 
@@ -352,6 +429,9 @@ public class MainViewModel : ViewModelBase, IDisposable
             _musicPlayer.Stop();
         }
     }
+
+    // 当用户打开了播放列表时，用于标记是否保存当前播放列表
+    public bool HasUnsavedPlaylistChanges => _isPlaylistUserOpened && _isPlaylistDirty;
 
     private void OnSettingChanged(object? sender, SettingChangedEventArgs e)
     {
@@ -457,7 +537,6 @@ public class MainViewModel : ViewModelBase, IDisposable
 
             // 坑：UpdateMetadata会清除缩略图，对非NCM文件，FileInit总是晚于AlbumArtInit，导致设置的缩略图被清空
             _smtcService.UpdateTextMetadata(SongTitle, ArtistName);
-            _smtcService.UpdateTimeline(TimeSpan.Zero, TimeSpan.FromSeconds(length));
 
             _musicPlayer.SetMasterVolume((float)Volume);
 
@@ -579,9 +658,11 @@ public class MainViewModel : ViewModelBase, IDisposable
         }
         _syncContext.Post(_ =>
         {
+            var playingItem = PlaylistItems.FirstOrDefault(p => p.FilePath == _currentFilePath);
+            if (playingItem is not null)
+                playingItem.PlayedCount++;
             PlayPauseContent = "\u23F8";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Playing);
-            _smtcService.UpdateTimeline(TimeSpan.FromSeconds(ProgressValue), TimeSpan.FromSeconds(ProgressMaximum));
             _enableAutoPlay = false;
         }, null);
     }
@@ -593,7 +674,6 @@ public class MainViewModel : ViewModelBase, IDisposable
         {
             PlayPauseContent = "\u25B6";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Paused);
-            _smtcService.UpdateTimeline(TimeSpan.FromSeconds(ProgressValue), TimeSpan.FromSeconds(ProgressMaximum));
             UpdateLyricProgress((float)ProgressValue);
         }, null);
     }
@@ -607,18 +687,22 @@ public class MainViewModel : ViewModelBase, IDisposable
             ProgressValue = 0;
             CurrentTime = "0:00";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Stopped);
-            _smtcService.UpdateTimeline(TimeSpan.Zero, TimeSpan.FromSeconds(ProgressMaximum));
-
-            if (CurrentLyricIndex < 0 || CurrentLyricIndex >= Lyrics.Count) return;
-            Lyrics[CurrentLyricIndex].IsHighlighted = false;
-            Lyrics[CurrentLyricIndex].Progress = 0;
-            CurrentLyricIndex = 0;
-            Lyrics[CurrentLyricIndex].IsHighlighted = true;
-            if (_lrcFileController != null && CurrentLyricIndex >= 0 && CurrentLyricIndex < Lyrics.Count
-                                       && Lyrics[CurrentLyricIndex].IsProgressEnabled)
+            
+            if (CurrentLyricIndex >= 0 && CurrentLyricIndex < Lyrics.Count)
             {
-                Lyrics[CurrentLyricIndex].Progress = _lrcFileController.GetLrcPercentage(CurrentLyricIndex);
+                Lyrics[CurrentLyricIndex].IsHighlighted = false;
+                Lyrics[CurrentLyricIndex].Progress = 0;
+                CurrentLyricIndex = 0;
+                Lyrics[CurrentLyricIndex].IsHighlighted = true;
+                if (_lrcFileController != null && CurrentLyricIndex >= 0 && CurrentLyricIndex < Lyrics.Count
+                                           && Lyrics[CurrentLyricIndex].IsProgressEnabled)
+                {
+                    Lyrics[CurrentLyricIndex].Progress = _lrcFileController.GetLrcPercentage(CurrentLyricIndex);
+                }
             }
+            if (!_disableAutoAdvance)
+                AutoAdvance();
+            _disableAutoAdvance = false;
         }, null);
     }
 
@@ -630,6 +714,187 @@ public class MainViewModel : ViewModelBase, IDisposable
     private void OnToggleRomanji()
     {
         IsRomanjiVisible = !IsRomanjiVisible;
+    }
+
+    private void OnPlayModeToggle()
+    {
+        CurrentPlayMode = CurrentPlayMode switch
+        {
+            PlayMode.Sequential => PlayMode.ListLoop,
+            PlayMode.ListLoop => PlayMode.SingleLoop,
+            PlayMode.SingleLoop => PlayMode.Shuffle,
+            _ => PlayMode.Sequential
+        };
+        _shuffleHistory.Clear();
+    }
+
+    private void OnPrev()
+    {
+        if (PlaylistItems.Count == 0)
+        {
+            StopPlayback();
+            return;
+        }
+
+        if (CurrentPlayMode == PlayMode.Shuffle)
+        {
+            if (_shuffleHistory.Count > 0)
+            {
+                var prevPath = _shuffleHistory.Pop();
+                PlaySongByPath(prevPath);
+            }
+            else
+            {
+                StopPlayback();
+            }
+            return;
+        }
+
+        var currentIndex = GetCurrentPlaylistIndex();
+        if (currentIndex < 0)
+        {
+            StopPlayback();
+            return;
+        }
+
+        if (CurrentPlayMode == PlayMode.SingleLoop)
+        {
+            PlaySongByPath(PlaylistItems[currentIndex].FilePath);
+            return;
+        }
+
+        var prevIndex = currentIndex - 1;
+        if (prevIndex < 0)
+        {
+            if (CurrentPlayMode == PlayMode.ListLoop)
+            {
+                prevIndex = PlaylistItems.Count - 1;
+            }
+            else
+            {
+                StopPlayback();
+                return;
+            }
+        }
+
+        PlaySongByPath(PlaylistItems[prevIndex].FilePath);
+    }
+
+    private void OnNext()
+    {
+        if (PlaylistItems.Count == 0)
+        {
+            StopPlayback();
+            return;
+        }
+
+        if (CurrentPlayMode == PlayMode.Shuffle)
+        {
+            if (_currentFilePath != null)
+                _shuffleHistory.Push(_currentFilePath);
+
+            if (PlaylistItems.Count == 1)
+            {
+                PlaySongByPath(PlaylistItems[0].FilePath);
+                return;
+            }
+
+            int nextIndex;
+            var currentIndex = GetCurrentPlaylistIndex();
+            do
+            {
+                nextIndex = _shuffleRandom.Next(PlaylistItems.Count);
+            } while (nextIndex == currentIndex && PlaylistItems.Count > 1);
+
+            PlaySongByPath(PlaylistItems[nextIndex].FilePath);
+            return;
+        }
+
+        var curIndex = GetCurrentPlaylistIndex();
+        if (curIndex < 0)
+        {
+            StopPlayback();
+            return;
+        }
+
+        if (CurrentPlayMode == PlayMode.SingleLoop)
+        {
+            PlaySongByPath(PlaylistItems[curIndex].FilePath);
+            return;
+        }
+
+        var nextIdx = curIndex + 1;
+        if (nextIdx >= PlaylistItems.Count)
+        {
+            if (CurrentPlayMode == PlayMode.ListLoop)
+            {
+                nextIdx = 0;
+            }
+            else
+            {
+                // 顺序播放在下一曲不可用时停止
+                StopPlayback();
+                return;
+            }
+        }
+
+        PlaySongByPath(PlaylistItems[nextIdx].FilePath);
+    }
+
+    private void AutoAdvance()
+    {
+        if (PlaylistItems.Count == 0) return;
+
+        switch (CurrentPlayMode)
+        {
+            case PlayMode.SingleLoop:
+                if (_currentFilePath != null)
+                    PlaySongByPath(_currentFilePath);
+                break;
+            case PlayMode.Sequential:
+            case PlayMode.ListLoop:
+            case PlayMode.Shuffle:
+                OnNext();
+                break;
+        }
+    }
+
+    private int GetCurrentPlaylistIndex()
+    {
+        if (_currentFilePath == null) return -1;
+        for (var i = 0; i < PlaylistItems.Count; i++)
+        {
+            if (PlaylistItems[i].FilePath == _currentFilePath)
+                return i;
+        }
+        return -1;
+    }
+
+    private void PlaySongByPath(string filePath)
+    {
+        _enableAutoPlay = true;
+        try
+        {
+            Task.Run(() => OpenFile(filePath));
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show($"{ex.Message}\n{filePath}", "Error", WpfMessageBoxIcon.Error);
+        }
+    }
+
+    // 手动触发停止播放，不进行AutoAdvance
+    private void StopPlayback()
+    {
+        _disableAutoAdvance = true;
+        if (_musicPlayer.IsInitialized() && _musicPlayer.IsPlaying())
+        {
+            _musicPlayer.Stop();
+        }
+        else
+        {
+            _disableAutoAdvance = false;
+        }
     }
 
     private async void OnPlayPause()
@@ -677,7 +942,6 @@ public class MainViewModel : ViewModelBase, IDisposable
             ProgressValue = 0;
             CurrentTime = "0:00";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Stopped);
-            _smtcService.UpdateTimeline(TimeSpan.Zero, TimeSpan.FromSeconds(ProgressMaximum));
             _smtcService.UpdateTextMetadata("Unknown Title", "Unknown Artist");
             _lrcFileController?.Dispose();
             _lrcFileController = null;
@@ -686,6 +950,238 @@ public class MainViewModel : ViewModelBase, IDisposable
             HasTranslationAvailable = false;
             HasRomanjiAvailable = false;
         }
+    }
+
+    private async Task OnOpenPlaylistAsync()
+    {
+        if (HasUnsavedPlaylistChanges)
+        {
+            var result = WpfMessageBox.Show(
+                "播放列表有未保存的更改，是否保存？",
+                "确认",
+                WpfMessageBoxButton.YesNoCancel,
+                WpfMessageBoxIcon.Question);
+
+            switch (result)
+            {
+                case WpfMessageBoxResult.Yes:
+                    await SavePlaylistAsync();
+                    break;
+                case WpfMessageBoxResult.Cancel:
+                    return;
+            }
+        }
+        if (IsFileDialogOpen) { return; }
+        IsFileDialogOpen = true;
+        var path = await _fileDialogService.PickJsonAsync();
+
+        IsFileDialogOpen = false;
+
+        if (path == null) return;
+        try
+        {
+            var errorCode = _playlistProvider.Load(path);
+            if (errorCode != IPlaylistProvider.ErrorCode.NoError)
+            {
+                WpfMessageBox.Show($"加载播放列表失败: {errorCode}", "Error", WpfMessageBoxIcon.Error);
+                return;
+            }
+
+            var playlist = _playlistProvider.GetPlaylist();
+
+            if (string.IsNullOrEmpty(playlist.Id))
+            {
+                WpfMessageBox.Show("播放列表格式错误: 缺少 ID", "Error", WpfMessageBoxIcon.Error);
+                return;
+            }
+
+            if (playlist.FormatVersion != 3)
+            {
+                WpfMessageBox.Show($"播放列表格式版本不支持: {playlist.FormatVersion}，需要版本 3", "Error", WpfMessageBoxIcon.Error);
+                return;
+            }
+
+            PlaylistItems.Clear();
+
+            // 加载播放列表标题
+            PlaylistTitle = string.IsNullOrEmpty(playlist.Name) ? "播放列表" : playlist.Name;
+
+            // 加载播放列表封面（所有类型均尝试加载，失败时静默回落至默认封面）
+            PlaylistCoverImage = TryLoadPlaylistCover(playlist.Cover);
+
+            foreach (var content in playlist.Contents)
+            {
+                if (!File.Exists(content.File)) continue;
+
+                var cached = _songDatabase.FindByMd5(content.Md5);
+                var title = cached?.Title ?? Path.GetFileNameWithoutExtension(content.File);
+                var artist = cached?.Artist ?? "Unknown Artist";
+                var playedCount = cached?.PlayCount ?? 0;
+
+                var itemVM = new PlaylistItemViewModel(content.File, title, artist, playedCount);
+                if (cached?.AlbumArt is { Length: > 0 })
+                    itemVM.AlbumCover = LoadBitmapImageFromBytes(cached.AlbumArt);
+
+                PlaylistItems.Add(itemVM);
+            }
+
+            if (PlaylistItems.Count > 0)
+            {
+                var first = PlaylistItems[0];
+                _enableAutoPlay = IsMusicPlaying;
+
+                await Task.Run(() => OpenFile(first.FilePath));
+            }
+
+            _isPlaylistUserOpened = true;
+            _isPlaylistDirty = false;
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show($"加载播放列表失败: {ex.Message}\n{path}", "Error", WpfMessageBoxIcon.Error);
+        }
+    }
+
+    public async Task SavePlaylistAsync()
+    {
+        var path = _playlistProvider.CurrentFilePath;
+
+        if (string.IsNullOrEmpty(path))
+        {
+            if (IsFileDialogOpen) { return; }
+            IsFileDialogOpen = true;
+            path = await _fileDialogService.SaveJsonAsync();
+            IsFileDialogOpen = false;
+            if (path == null) return;
+        }
+
+        try
+        {
+            var playlist = _playlistProvider.GetPlaylist();
+
+            if (string.IsNullOrEmpty(playlist.Id))
+                playlist.Id = Guid.NewGuid().ToString();
+
+            playlist.FormatVersion = 3;
+            playlist.CreatedAt = DateTimeOffset.Now;
+            playlist.Name = PlaylistTitle;
+            playlist.Contents.Clear();
+
+            foreach (var item in PlaylistItems)
+            {
+                var md5 = ComputeFileMd5(item.FilePath);
+                playlist.Contents.Add(new ContentRecord
+                {
+                    File = item.FilePath,
+                    Md5 = md5
+                });
+            }
+
+            var errorCode = _playlistProvider.Save(path);
+            if (errorCode != IPlaylistProvider.ErrorCode.NoError)
+            {
+                WpfMessageBox.Show($"保存播放列表失败: {errorCode}", "Error", WpfMessageBoxIcon.Error);
+            }
+            else
+            {
+                _isPlaylistDirty = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show($"保存播放列表失败: {ex.Message}\n{path}", "Error", WpfMessageBoxIcon.Error);
+        }
+    }
+
+    private async Task OnAddSongToPlaylistAsync()
+    {
+        if (IsFileDialogOpen) return;
+        IsFileDialogOpen = true;
+        var paths = await _fileDialogService.PickMusicFilesAsync();
+        IsFileDialogOpen = false;
+
+        foreach (var path in paths)
+        {
+            if (!File.Exists(path)) continue;
+            if (PlaylistItems.Any(p => p.FilePath == path)) continue;
+
+            var md5 = ComputeFileMd5(path);
+            var cached = _songDatabase.FindByMd5(md5);
+            var title = cached?.Title ?? Path.GetFileNameWithoutExtension(path);
+            var artist = cached?.Artist ?? "Unknown Artist";
+            var playedCount = cached?.PlayCount ?? 0;
+
+            var itemVM = new PlaylistItemViewModel(path, title, artist, playedCount);
+            if (cached?.AlbumArt is { Length: > 0 })
+                itemVM.AlbumCover = LoadBitmapImageFromBytes(cached.AlbumArt);
+
+            PlaylistItems.Add(itemVM);
+            _isPlaylistUserOpened = true;
+            _isPlaylistDirty = true;
+        }
+    }
+
+    private void OnRemoveSongFromPlaylist(PlaylistItemViewModel? item)
+    {
+        if (item == null) return;
+        PlaylistItems.Remove(item);
+        _isPlaylistUserOpened = true;
+        _isPlaylistDirty = true;
+    }
+
+    private async Task OnChangePlaylistCoverAsync()
+    {
+        if (IsFileDialogOpen) return;
+        IsFileDialogOpen = true;
+        var path = await _fileDialogService.PickImageAsync();
+        IsFileDialogOpen = false;
+
+        if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
+
+        try
+        {
+            var imageBytes = await File.ReadAllBytesAsync(path);
+
+            // 压缩图片为JPEG并限制尺寸
+            var compressedBytes = CompressImageToJpeg(imageBytes, 300, 300);
+
+            var playlist = _playlistProvider.GetPlaylist();
+            playlist.Cover = new CoverRecord
+            {
+                Type = CoverType.Base64,
+                Data = compressedBytes,
+                Url = null
+            };
+
+            PlaylistCoverImage = LoadBitmapImageFromBytes(compressedBytes);
+            _isPlaylistUserOpened = true;
+            _isPlaylistDirty = true;
+        }
+        catch (Exception ex)
+        {
+            WpfMessageBox.Show($"设置封面失败: {ex.Message}", "Error", WpfMessageBoxIcon.Error);
+        }
+    }
+
+    private static byte[] CompressImageToJpeg(byte[] imageData, int maxWidth, int maxHeight)
+    {
+        using var inputStream = new MemoryStream(imageData);
+        var decoder = BitmapDecoder.Create(inputStream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        var frame = decoder.Frames[0];
+
+        var scaleX = (double)maxWidth / frame.PixelWidth;
+        var scaleY = (double)maxHeight / frame.PixelHeight;
+        var scale = Math.Min(scaleX, scaleY);
+        if (scale > 1) scale = 1; // 不放大
+
+        var transformed = new TransformedBitmap(frame, new System.Windows.Media.ScaleTransform(scale, scale));
+
+        var encoder = new JpegBitmapEncoder { QualityLevel = 80 };
+        encoder.Frames.Add(BitmapFrame.Create(transformed));
+
+        using var outputStream = new MemoryStream();
+        encoder.Save(outputStream);
+        return outputStream.ToArray();
     }
 
     private void LoadLyrics()
@@ -860,12 +1356,22 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     private void AddToPlaylist()
     {
-        if (_currentFilePath == null) return;
+        if (_currentFilePath == null
+            || _currentMd5 == null) return;
         if (PlaylistItems.All(p => p.FilePath != _currentFilePath))
         {
-            PlaylistItems.Add(new PlaylistItemViewModel(
-                _currentFilePath, SongTitle, ArtistName, TotalTime)
-            { AlbumCover = AlbumCoverImage });
+            // query database, get album cover
+            var cached = _songDatabase.FindByMd5(_currentMd5);
+            var itemVM = new PlaylistItemViewModel(
+                _currentFilePath, SongTitle, ArtistName, cached?.PlayCount ?? 0);
+            if (cached?.AlbumArt is { Length: > 0 })
+                itemVM.AlbumCover = LoadBitmapImageFromBytes(cached.AlbumArt);
+            else if (AlbumCoverImage is not null)
+                itemVM.AlbumCover = AlbumCoverImage;
+            PlaylistItems.Add(itemVM);
+            if (_isPlaylistUserOpened)
+                // 若用户打开了播放列表，此操作会造成插入歌曲到播放列表中
+                _isPlaylistDirty = true;
         }
         foreach (var item in PlaylistItems)
             item.IsPlaying = item.FilePath == _currentFilePath;
@@ -877,7 +1383,8 @@ public class MainViewModel : ViewModelBase, IDisposable
         try
         {
             _enableAutoPlay = true;
-            OpenFile(item.FilePath);
+            // 避免ui冻结
+            await Task.Run(() => OpenFile(item.FilePath));
         }
         catch (Exception ex)
         {
@@ -926,6 +1433,44 @@ public class MainViewModel : ViewModelBase, IDisposable
         bitmapImage.EndInit();
         bitmapImage.Freeze();
         return bitmapImage;
+    }
+
+    private static BitmapImage? TryLoadPlaylistCover(CoverRecord cover)
+    {
+        try
+        {
+            switch (cover.Type)
+            {
+                case CoverType.Base64 when cover.Data is { Length: > 0 }:
+                    return LoadBitmapImageFromBytes(cover.Data);
+
+                case CoverType.Local when !string.IsNullOrEmpty(cover.Url):
+                {
+                    if (!File.Exists(cover.Url)) return null;
+                    var bytes = File.ReadAllBytes(cover.Url);
+                    return LoadBitmapImageFromBytes(bytes);
+                }
+
+                case CoverType.Cloud when !string.IsNullOrEmpty(cover.Url):
+                {
+                    var bitmapImage = new BitmapImage();
+                    bitmapImage.BeginInit();
+                    bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                    bitmapImage.UriSource = new Uri(cover.Url, UriKind.Absolute);
+                    bitmapImage.EndInit();
+                    bitmapImage.Freeze();
+                    return bitmapImage;
+                }
+
+                default:
+                    return null;
+            }
+        }
+        catch
+        {
+            // 加载失败时静默回落至默认封面
+            return null;
+        }
     }
 
     private static string ComputeFileMd5(string filePath)

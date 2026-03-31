@@ -39,7 +39,13 @@ namespace WpfMusicPlayer
 
             InitializeComponent();
             var smtcService = new SmtcService();
-            DataContext = new MainViewModel(ConfigProvider.Reader, new FileDialogService(), smtcService, new SongDatabaseService(), new CommandLineParser());
+            DataContext = new MainViewModel( // perform dependency injection
+                ConfigProvider.Reader, 
+                new FileDialogService(), 
+                smtcService, // note: smtc will be initialized in OnSourceInitialized, so we need to hold a reference to it here
+                new SongDatabaseService(), 
+                new CommandLineParser(),
+                new PlaylistProvider());
             AtlTraceRedirectManager.Init();
             SourceInitialized += (s, e) =>
             {
@@ -197,8 +203,34 @@ namespace WpfMusicPlayer
             return null;
         }
 
-        private void MainWindow_Closed(object sender, EventArgs e)
+        private bool _closeConfirmed;
+
+        private async void MainWindow_Closing(object sender, CancelEventArgs e)
         {
+            if (_closeConfirmed) return;
+
+            if (ViewModel.HasUnsavedPlaylistChanges)
+            {
+                var result = WpfMessageBox.Show(
+                    "播放列表有未保存的更改，是否保存？",
+                    "确认",
+                    WpfMessageBoxButton.YesNoCancel,
+                    WpfMessageBoxIcon.Question);
+
+                switch (result)
+                {
+                    case WpfMessageBoxResult.Yes:
+                        e.Cancel = true;
+                        await ViewModel.SavePlaylistAsync();
+                        _closeConfirmed = true;
+                        Close();
+                        return;
+                    case WpfMessageBoxResult.Cancel:
+                        e.Cancel = true;
+                        return;
+                }
+            }
+
             _spectrumTimer.Stop();
             ViewModel.OnWindowClosed();
             ViewModel.Dispose();

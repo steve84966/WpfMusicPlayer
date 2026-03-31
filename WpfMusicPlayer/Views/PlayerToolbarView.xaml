@@ -40,7 +40,8 @@
                 </local:SongInfoView>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Button Command="{Binding PlayModeCommand}" Content="🔀" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
+                    <Button Command="{Binding PlayModeCommand}" Content="🔀" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0"
+                            ToolTip="{Binding PlayModeTooltip}">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="Foreground" Value="White"/>
@@ -49,7 +50,7 @@
                                     <Setter.Value>
                                         <ControlTemplate TargetType="Button">
                                             <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6">
-                                                <TextBlock Text="&#x1F500;" FontSize="24" Foreground="{TemplateBinding Foreground}"
+                                                <TextBlock Text="{Binding PlayModeContent}" FontSize="24" Foreground="{TemplateBinding Foreground}"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                             </Border>
                                             <ControlTemplate.Triggers>

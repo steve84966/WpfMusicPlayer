@@ -304,6 +304,7 @@ namespace MusicPlayerLibrary {
 
 	private:
 		void check_if_null();
+		bool is_native_valid() { return native_handle != nullptr; }
 
 		ref class ProcessEventState {
 		public:
