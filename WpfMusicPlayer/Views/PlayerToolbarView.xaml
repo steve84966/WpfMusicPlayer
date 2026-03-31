@@ -40,7 +40,7 @@
                 </local:SongInfoView>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center">
-                    <Button Command="{Binding PlayModeCommand}" Content="🔀" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0"
+                    <Button Command="{Binding PlayModeToggleCommand}" Content="🔀" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0"
                             ToolTip="{Binding PlayModeTooltip}">
                         <Button.Style>
                             <Style TargetType="Button">
@@ -67,7 +67,7 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Command="{Binding PrevCommand}" Content="&#x23EE;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
+                    <Button Command="{Binding PrevSongCommand}" Content="&#x23EE;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="Foreground" Value="White"/>
@@ -122,7 +122,7 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Command="{Binding NextCommand}" Content="&#x23ED;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
+                    <Button Command="{Binding NextSongCommand}" Content="&#x23ED;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="Foreground" Value="White"/>
@@ -148,7 +148,7 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Command="{Binding PlaylistCommand}" Content="&#x23ED;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
+                    <Button Command="{Binding TogglePlaylistCommand}" Content="&#x23ED;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="Foreground" Value="White"/>

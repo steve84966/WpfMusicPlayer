@@ -1,15 +1,16 @@
 using MusicPlayerLibrary;
 using System.Collections.ObjectModel;
 using System.IO;
-using System.Runtime;
+using System.Runtime; 
 using System.Security.Cryptography;
-using System.Windows;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using WpfMusicPlayer.Helpers;
 using WpfMusicPlayer.Models;
 using WpfMusicPlayer.Services.Abstractions;
 using static WpfMusicPlayer.Models.ConfigData;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace WpfMusicPlayer.ViewModels;
 
@@ -17,7 +18,8 @@ public enum ActiveView { Player, Playlist, Settings }
 
 public enum PlayMode { Sequential, ListLoop, SingleLoop, Shuffle }
 
-public class MainViewModel : ViewModelBase, IDisposable
+// 重构：全面迁移至CommunityToolkit.MVVM
+public partial class MainViewModel : ObservableObject, IDisposable
 {
     // 业务逻辑在这里写
     // 不要把业务逻辑写在View里！！！
@@ -71,21 +73,6 @@ public class MainViewModel : ViewModelBase, IDisposable
         SubscribeSmtcEvents();
         RestoreSettingsFromCommandLine();
 
-        PlayPauseCommand = new RelayCommand(OnPlayPause, () => !IsDecoding);
-        OpenCommand = new RelayCommand(async () => await OnOpenAsync());
-        PrevCommand = new RelayCommand(OnPrev);
-        NextCommand = new RelayCommand(OnNext);
-        PlayModeCommand = new RelayCommand(OnPlayModeToggle);
-        PlaylistCommand = new RelayCommand(OnTogglePlaylist);
-        TranslateCommand = new RelayCommand(OnToggleTranslation, () => HasTranslationAvailable);
-        RomanjiCommand = new RelayCommand(OnToggleRomanji, () => HasRomanjiAvailable);
-        OpenPlaylistCommand = new RelayCommand(async () => await OnOpenPlaylistAsync());
-        SavePlaylistCommand = new RelayCommand(async () => await SavePlaylistAsync());
-        AddSongToPlaylistCommand = new RelayCommand(async () => await OnAddSongToPlaylistAsync());
-        RemoveSongFromPlaylistCommand = new RelayCommand(
-            obj => OnRemoveSongFromPlaylist(obj as PlaylistItemViewModel),
-            obj => obj is PlaylistItemViewModel);
-        ChangePlaylistCoverCommand = new RelayCommand(async () => await OnChangePlaylistCoverAsync());
     }
 
     private void RestoreSettingsFromCommandLine()
@@ -129,47 +116,26 @@ public class MainViewModel : ViewModelBase, IDisposable
         _musicPlayer.SetEqualizerBand(index, value);
     }
 
-    public string SongTitle
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    } = "Unknown Title";
+    [ObservableProperty]
+    public partial string SongTitle { get; private set; } = "Unknown Title";
 
-    public string ArtistName
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    } = "Unknown Artist";
+    [ObservableProperty]
+    public partial string ArtistName { get; private set; } = "Unknown Artist";
 
-    public BitmapImage? AlbumCoverImage
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    }
+    [ObservableProperty]
+    public partial BitmapImage? AlbumCoverImage { get; private set; }
 
-    public string CurrentTime
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    } = "0:00";
+    [ObservableProperty]
+    public partial string CurrentTime { get; private set; } = "0:00";
 
-    public string TotalTime
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    } = "0:00";
+    [ObservableProperty]
+    public partial string TotalTime { get; private set; } = "0:00";
 
-    public double ProgressValue
-    {
-        get;
-        set => SetProperty(ref field, value);
-    }
+    [ObservableProperty]
+    public partial double ProgressValue { get; set; }
 
-    public double ProgressMaximum
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    } = 100;
+    [ObservableProperty]
+    public partial double ProgressMaximum { get; private set; } = 100;
 
     public double Volume
     {
@@ -183,45 +149,27 @@ public class MainViewModel : ViewModelBase, IDisposable
         }
     } = 0.5;
 
-    public string PlayPauseContent
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    } = "\u25B6";
+    [ObservableProperty]
+    public partial string PlayPauseContent { get; private set; } = "\u25B6";
 
     public ObservableCollection<LyricLineViewModel> Lyrics { get; } = [];
 
-    public int CurrentLyricIndex
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    } = -1;
+    [ObservableProperty]
+    public partial int CurrentLyricIndex { get; private set; } = -1;
 
     public bool IsDraggingSlider { get; set; }
 
-    public bool IsTranslationVisible
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    } = true;
+    [ObservableProperty]
+    public partial bool IsTranslationVisible { get; private set; } = true;
 
-    public bool HasTranslationAvailable
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    }
+    [ObservableProperty]
+    public partial bool HasTranslationAvailable { get; private set; }
 
-    public bool IsRomanjiVisible
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    } = true;
+    [ObservableProperty]
+    public partial bool IsRomanjiVisible { get; private set; } = true;
 
-    public bool HasRomanjiAvailable
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    }
+    [ObservableProperty]
+    public partial bool HasRomanjiAvailable { get; private set; }
 
     public bool IsFileDialogOpen { get; set; }
 
@@ -237,11 +185,8 @@ public class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    public float[] SpectrumData
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    } = [];
+    [ObservableProperty]
+    public partial float[] SpectrumData { get; private set; } = [];
 
     public ObservableCollection<PlaylistItemViewModel> PlaylistItems { get; } = [];
 
@@ -258,25 +203,16 @@ public class MainViewModel : ViewModelBase, IDisposable
         }
     } = "播放列表";
 
-    public BitmapImage? PlaylistCoverImage
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    }
+    [ObservableProperty]
+    public partial BitmapImage? PlaylistCoverImage { get; private set; }
 
-    public ActiveView ActiveView
-    {
-        get;
-        set => SetProperty(ref field, value);
-    }
+    [ObservableProperty]
+    public partial ActiveView ActiveView { get; set; }
 
     public SettingsViewModel Settings { get; }
 
-    public UISettings.BackgroundMode CurrentBackgroundMode
-    {
-        get;
-        private set => SetProperty(ref field, value);
-    }
+    [ObservableProperty]
+    public partial UISettings.BackgroundMode CurrentBackgroundMode { get; private set; }
 
     public PlayMode CurrentPlayMode
     {
@@ -309,20 +245,6 @@ public class MainViewModel : ViewModelBase, IDisposable
 
     // for RebootApplication to build command line args
     public bool IsMusicPlaying => _musicPlayer.IsPlaying();
-
-    public ICommand PlayPauseCommand { get; }
-    public ICommand OpenCommand { get; }
-    public ICommand PrevCommand { get; }
-    public ICommand NextCommand { get; }
-    public ICommand PlayModeCommand { get; }
-    public ICommand TranslateCommand { get; }
-    public ICommand RomanjiCommand { get; }
-    public ICommand PlaylistCommand { get; }
-    public ICommand OpenPlaylistCommand { get; }
-    public ICommand SavePlaylistCommand { get; }
-    public ICommand AddSongToPlaylistCommand { get; }
-    public ICommand RemoveSongFromPlaylistCommand { get; }
-    public ICommand ChangePlaylistCoverCommand { get; }
 
     public void OpenFile(string filePath)
     {
@@ -491,14 +413,14 @@ public class MainViewModel : ViewModelBase, IDisposable
     {
         _smtcService.PlayRequested += () => _syncContext.Post(_ =>
         {
-            if (!_musicPlayer.IsPlaying()) OnPlayPause();
+            if (!_musicPlayer.IsPlaying()) PlayPause();
         }, null);
         _smtcService.PauseRequested += () => _syncContext.Post(_ =>
         {
-            if (_musicPlayer.IsPlaying()) OnPlayPause();
+            if (_musicPlayer.IsPlaying()) PlayPause();
         }, null);
-        _smtcService.NextRequested += () => _syncContext.Post(_ => NextCommand.Execute(null), null);
-        _smtcService.PreviousRequested += () => _syncContext.Post(_ => PrevCommand.Execute(null), null);
+        _smtcService.NextRequested += () => _syncContext.Post(_ => NextSongCommand.Execute(null), null);
+        _smtcService.PreviousRequested += () => _syncContext.Post(_ => PrevSongCommand.Execute(null), null);
     }
 
     private void OnFileInit()
@@ -706,17 +628,20 @@ public class MainViewModel : ViewModelBase, IDisposable
         }, null);
     }
 
-    private void OnToggleTranslation()
+    [RelayCommand]
+    private void ToggleTranslation()
     {
         IsTranslationVisible = !IsTranslationVisible;
     }
 
-    private void OnToggleRomanji()
+    [RelayCommand]
+    private void ToggleRomanji()
     {
         IsRomanjiVisible = !IsRomanjiVisible;
     }
 
-    private void OnPlayModeToggle()
+    [RelayCommand]
+    private void PlayModeToggle()
     {
         CurrentPlayMode = CurrentPlayMode switch
         {
@@ -728,7 +653,8 @@ public class MainViewModel : ViewModelBase, IDisposable
         _shuffleHistory.Clear();
     }
 
-    private void OnPrev()
+    [RelayCommand]
+    private void PrevSong()
     {
         if (PlaylistItems.Count == 0)
         {
@@ -780,7 +706,8 @@ public class MainViewModel : ViewModelBase, IDisposable
         PlaySongByPath(PlaylistItems[prevIndex].FilePath);
     }
 
-    private void OnNext()
+    [RelayCommand]
+    private void NextSong()
     {
         if (PlaylistItems.Count == 0)
         {
@@ -854,7 +781,7 @@ public class MainViewModel : ViewModelBase, IDisposable
             case PlayMode.Sequential:
             case PlayMode.ListLoop:
             case PlayMode.Shuffle:
-                OnNext();
+                NextSong();
                 break;
         }
     }
@@ -897,7 +824,8 @@ public class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private async void OnPlayPause()
+    [RelayCommand]
+    private async Task PlayPause()
     {
         if (!_musicPlayer.IsInitialized())
         {
@@ -918,7 +846,8 @@ public class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private async Task OnOpenAsync()
+    [RelayCommand]
+    private async Task OpenAsync()
     {
         if (IsFileDialogOpen == true) { return; }
         IsFileDialogOpen = true;
@@ -952,7 +881,8 @@ public class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private async Task OnOpenPlaylistAsync()
+    [RelayCommand]
+    private async Task OpenPlaylistAsync()
     {
         if (HasUnsavedPlaylistChanges)
         {
@@ -1042,6 +972,7 @@ public class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
+    [RelayCommand]
     public async Task SavePlaylistAsync()
     {
         var path = _playlistProvider.CurrentFilePath;
@@ -1093,7 +1024,8 @@ public class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private async Task OnAddSongToPlaylistAsync()
+    [RelayCommand]
+    private async Task AddSongToPlaylistAsync()
     {
         if (IsFileDialogOpen) return;
         IsFileDialogOpen = true;
@@ -1121,7 +1053,8 @@ public class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private void OnRemoveSongFromPlaylist(PlaylistItemViewModel? item)
+    [RelayCommand]
+    private void RemoveSongFromPlaylist(PlaylistItemViewModel? item)
     {
         if (item == null) return;
         PlaylistItems.Remove(item);
@@ -1129,7 +1062,8 @@ public class MainViewModel : ViewModelBase, IDisposable
         _isPlaylistDirty = true;
     }
 
-    private async Task OnChangePlaylistCoverAsync()
+    [RelayCommand]
+    private async Task ChangePlaylistCoverAsync()
     {
         if (IsFileDialogOpen) return;
         IsFileDialogOpen = true;
@@ -1349,7 +1283,8 @@ public class MainViewModel : ViewModelBase, IDisposable
         }
     }
 
-    private void OnTogglePlaylist()
+    [RelayCommand]
+    private void TogglePlaylist()
     {
         ActiveView = ActiveView == ActiveView.Playlist ? ActiveView.Player : ActiveView.Playlist;
     }

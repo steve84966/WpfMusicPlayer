@@ -7,8 +7,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using MusicPlayerLibrary;
 using WpfMusicPlayer.Helpers;
-using WpfMusicPlayer.Services;
-using WpfMusicPlayer.Services.Implementations;
+using WpfMusicPlayer.Services.Abstractions;
 using WpfMusicPlayer.ViewModels;
 using WpfMusicPlayer.Views;
 using static WpfMusicPlayer.Models.ConfigData;
@@ -30,7 +29,7 @@ namespace WpfMusicPlayer
         private DecodingDialog? _decodingDialog;
         private readonly DispatcherTimer _spectrumTimer;
 
-        public MainWindow()
+        public MainWindow(MainViewModel viewModel, ISmtcService smtcService)
         {
             if (DesignerProperties.GetIsInDesignMode(new DependencyObject()))
             {
@@ -38,14 +37,7 @@ namespace WpfMusicPlayer
             }
 
             InitializeComponent();
-            var smtcService = new SmtcService();
-            DataContext = new MainViewModel( // perform dependency injection
-                ConfigProvider.Reader, 
-                new FileDialogService(), 
-                smtcService, // note: smtc will be initialized in OnSourceInitialized, so we need to hold a reference to it here
-                new SongDatabaseService(), 
-                new CommandLineParser(),
-                new PlaylistProvider());
+            DataContext = viewModel;
             AtlTraceRedirectManager.Init();
             SourceInitialized += (s, e) =>
             {
@@ -207,9 +199,7 @@ namespace WpfMusicPlayer
 
         private async void MainWindow_Closing(object sender, CancelEventArgs e)
         {
-            if (_closeConfirmed) return;
-
-            if (ViewModel.HasUnsavedPlaylistChanges)
+            if (!_closeConfirmed && ViewModel.HasUnsavedPlaylistChanges)
             {
                 var result = WpfMessageBox.Show(
                     "播放列表有未保存的更改，是否保存？",
@@ -232,6 +222,9 @@ namespace WpfMusicPlayer
             }
 
             _spectrumTimer.Stop();
+            ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+            _decodingDialog?.Close();
+            _decodingDialog = null;
             ViewModel.OnWindowClosed();
             ViewModel.Dispose();
         }

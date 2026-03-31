@@ -1,4 +1,5 @@
 ﻿using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace WpfMusicPlayer.ViewModels;
 
@@ -8,7 +9,7 @@ public class EqualizerPreset(string name, int[] values)
     public int[] Values { get; } = values;
 }
 
-public class EqualizerViewModel : ViewModelBase
+public class EqualizerViewModel : ObservableObject
 {
     private readonly Action<int, int>? _applyBand;
     private bool _suppressPresetSwitch;

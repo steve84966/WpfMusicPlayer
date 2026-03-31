@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Windows;
+using CommunityToolkit.Mvvm.ComponentModel;
 using WpfMusicPlayer.Helpers;
-using WpfMusicPlayer.Models;
 using WpfMusicPlayer.Services.Abstractions;
 using static WpfMusicPlayer.Models.ConfigData;
 
@@ -12,7 +12,7 @@ public sealed class SettingChangedEventArgs(string settingName) : EventArgs
     public string SettingName { get; } = settingName;
 }
 
-public class SettingsViewModel : ViewModelBase
+public class SettingsViewModel : ObservableObject
 {
     private readonly IConfigProvider _configProvider;
     private bool _isLoading;
