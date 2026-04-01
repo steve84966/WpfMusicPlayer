@@ -399,6 +399,32 @@ public sealed class LrcFileControllerTest
 
     #endregion
 
+    #region Malformed Romanji Testing
+
+    [TestMethod]
+    public void ParseLrcStream_MalformedRomanjiContainsChinese_Parsing()
+    {
+        const string lrc = """
+                           [01:15.836]be tsu no ko to ga n ba re ba i i ja n ( 笑 )
+                           [01:15.836]別の事頑張ればいいじゃん(笑)
+                           [01:15.836]在其他方面全力以赴不就行了(笑)
+                           """;
+        Assert.AreEqual(0, CreateFromStream(lrc).GetLrcLineAuxIndex(0, LrcAuxiliaryInfo.Romanization));
+        Assert.AreEqual(2, CreateFromStream(lrc).GetLrcLineAuxIndex(0, LrcAuxiliaryInfo.Translation));
+    }
+
+    [TestMethod]
+    public void ParseLrcStream_MalformedRomanjiContainsChinese_Composer_Parsing()
+    {
+        const string lrc = """
+                           [00:03.697]kyo ku ： Aiobahn
+                           [00:03.697]曲：Aiobahn
+                           """;
+        Assert.AreEqual(0, CreateFromStream(lrc).GetLrcLineAuxIndex(0, LrcAuxiliaryInfo.Romanization));
+        Assert.AreEqual(1, CreateFromStream(lrc).GetLrcLineAuxIndex(0, LrcAuxiliaryInfo.Lyric));
+    }
+    #endregion
+
     #region Error handling
 
     [TestMethod]
