@@ -4,12 +4,13 @@
 #include <cstdio>
 #include <chrono>
 #include <memory>
+#include <afxmt.h>
+#include <vcclr.h>
 
 class AtlTraceRedirect
 {
 public:
-    explicit AtlTraceRedirect(const wchar_t* path, bool append = true);
-    explicit AtlTraceRedirect(FILE* file_ptr, bool take_ownership = false);
+    explicit AtlTraceRedirect(System::Object^ logger);
 
     ~AtlTraceRedirect();
 
@@ -42,8 +43,7 @@ private:
     CStringA format_message_va(const wchar_t* format, va_list args);
     CStringA format_message_va(const char* format, va_list args);
 
-    FILE* file_p;
-    bool own_file;
+    gcroot<System::Object^> logger;
     bool enable_redirect;
     bool timestamp_enable;
     bool info_enable;

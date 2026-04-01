@@ -1,5 +1,4 @@
 ﻿#include "pch.h"
-#include "AtlTraceRedirect.h"
 #include "LrcFileController.h"
 #include "LocaleConverter.h"
 

@@ -9,11 +9,8 @@ namespace MusicPlayerLibrary
 		std::vector<uint8_t> data;
 		int samples;
 	};
-
-	// 飞8分钱干飞马
-	// 干的飞马笑哈哈
-	// 飞8分钱惊坐起
-	// 飞马已经8bc
+	
+	// for fast-fourier transform execution
 	class FFTExecuter
 	{
 		static constexpr size_t BYTES_PER_FRAME = 4; // 16bit * 2ch

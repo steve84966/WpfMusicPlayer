@@ -1,5 +1,4 @@
 #include "pch.h"
-#include "AtlTraceRedirect.h"
 #include "LocaleConverter.h"
 
 #include <iconv.h>

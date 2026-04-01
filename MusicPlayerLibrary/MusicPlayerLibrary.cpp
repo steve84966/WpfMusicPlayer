@@ -3,11 +3,6 @@
 #include "MusicPlayerLibrary.h"
 #include <msclr/marshal_cppstd.h>
 
-#include "AtlTraceRedirect.h"
-#include "LocaleConverter.h"
-#include <io.h>
-
-
 using namespace System::Runtime::InteropServices;
 
 static float GetSystemDpiScale()
@@ -2309,18 +2304,11 @@ IntPtr MusicPlayerLibrary::SmtcInteropHelper::GetSmtcForWindow(IntPtr hWnd)
 	return IntPtr(smtc);
 }
 
-void MusicPlayerLibrary::AtlTraceRedirectManager::Init()
+void MusicPlayerLibrary::AtlTraceRedirectManager::Init(System::Object^ logger)
 {
-	wchar_t cwd[MAX_PATH]{};
-	if (GetCurrentDirectoryW(MAX_PATH, cwd) == 0)
+	if (m_pRedirector == nullptr)
 	{
-		cwd[0] = _T('.');
-		cwd[1] = _T('\0');
+		m_pRedirector = new AtlTraceRedirect(logger);
+		AtlTraceRedirect::SetAtlTraceRedirector(m_pRedirector);
 	}
-
-	CString logPath;
-	logPath.Format(_T("%s\\WpfMusicPlayer.log"), cwd);
-
-	m_pRedirector = new AtlTraceRedirect(logPath.GetString(), true); // 追加写入
-	AtlTraceRedirect::SetAtlTraceRedirector(m_pRedirector);
 }

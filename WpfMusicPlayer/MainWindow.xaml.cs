@@ -38,7 +38,6 @@ namespace WpfMusicPlayer
 
             InitializeComponent();
             DataContext = viewModel;
-            AtlTraceRedirectManager.Init();
             SourceInitialized += (s, e) =>
             {
                 var handle = new System.Windows.Interop.WindowInteropHelper(this).Handle;
