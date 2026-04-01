@@ -1,6 +1,8 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using System.Windows;
+using WpfMusicPlayer.Helpers;
 using WpfMusicPlayer.Services.Abstractions;
 using WpfMusicPlayer.Services.Implementations;
 using WpfMusicPlayer.ViewModels;
@@ -17,9 +19,18 @@ public partial class App : Application
 
     public App()
     {
-        _host = Host.CreateDefaultBuilder()
-            .ConfigureServices((context, services) =>
+        _host = 
+            Host.CreateDefaultBuilder()
+            .ConfigureLogging(logging =>
             {
+                logging.ClearProviders();
+                logging.AddConsole();
+                logging.AddDebug();
+            })
+            .ConfigureServices((_, services) =>
+            {
+                services.AddSingleton<NativeLoggerBridge>();
+
                 services.AddSingleton<IConfigProvider, ConfigProvider>();
                 services.AddSingleton<ISmtcService, SmtcService>();
                 services.AddSingleton<ISongDatabaseService, SongDatabaseService>();
@@ -38,6 +49,9 @@ public partial class App : Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         await _host.StartAsync();
+
+        var loggerBridge = _host.Services.GetRequiredService<NativeLoggerBridge>();
+        MusicPlayerLibrary.AtlTraceRedirectManager.Init(loggerBridge);
 
         var mainWindow = _host.Services.GetRequiredService<MainWindow>();
         mainWindow.Show();

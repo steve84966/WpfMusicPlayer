@@ -10,7 +10,7 @@ namespace MusicPlayerLibrary {
 	public ref class AtlTraceRedirectManager {
 		static AtlTraceRedirect* m_pRedirector;
 		public:
-			static void Init();
+			static void Init(System::Object^ logger);
 
 	};
 

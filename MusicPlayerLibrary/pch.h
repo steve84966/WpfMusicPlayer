@@ -31,7 +31,10 @@
 #include <afxwin.h>         // MFC 核心组件和标准组件
 #include <afxext.h>         // MFC 扩展
 
-#include <atltrace.h>       // For Debug
+#if !defined(ATLTRACE_REDIRECT_ENABLED)
+#define ATLTRACE_REDIRECT_ENABLED
+#endif
+#include "AtlTraceRedirect.h" // For Debug
 #include <atlcoll.h>        // ATL Header File
 
 #include <afxdisp.h>        // MFC 自动化类

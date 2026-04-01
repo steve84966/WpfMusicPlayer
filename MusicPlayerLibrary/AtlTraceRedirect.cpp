@@ -6,72 +6,22 @@
 
 AtlTraceRedirect* AtlTraceRedirect::global_atl_trace_redirector;
 
-AtlTraceRedirect::AtlTraceRedirect(const wchar_t* path, bool append)
-    : file_p(nullptr)
-    , own_file(true)
-    , enable_redirect(false)
+
+AtlTraceRedirect::AtlTraceRedirect(System::Object^ loggerObj)
+    : logger(loggerObj)
+    , enable_redirect(true)
     , timestamp_enable(true)
     , info_enable(true)
 {
-    if (path != nullptr && wcslen(path) > 0)
-    {
-        const wchar_t* mode = append ? L"a" : L"w";
-        if (errno_t err = _wfopen_s(&file_p, path, mode);
-            err == 0 && file_p != nullptr)
-        {
-            setvbuf(file_p, nullptr, _IONBF, 0);
-            enable_redirect = true;
-
-            // 写入开始标记
-            CSingleLock file_mut_lock(&file_mut);
-            CStringA start_msg;
-            start_msg.Format("=== ATLTRACE Redirect Started at %s ===\n",
-                query_time_stamp().GetString());
-            fputs(start_msg, file_p);
-        }
-    }
-}
-
-AtlTraceRedirect::AtlTraceRedirect(FILE* file_ptr, bool take_ownership)
-    : file_p(file_ptr)
-    , own_file(take_ownership)
-    , enable_redirect(file_ptr != nullptr)
-    , timestamp_enable(true)
-    , info_enable(true)
-{
-    if (file_p != nullptr)
-    {
-        CSingleLock file_mut_lock(&file_mut);
-        CStringA start_msg;
-        start_msg.Format("=== ATLTRACE Redirect Started at %s ===\n",
-            query_time_stamp().GetString());
-        fputs(start_msg, file_p);
-    }
 }
 
 AtlTraceRedirect::~AtlTraceRedirect()
 {
-    if (file_p != nullptr)
-    {
-        {
-            CSingleLock file_mut_lock(&file_mut);
-            CStringA end_msg;
-            end_msg.Format("=== ATLTRACE Redirect Ended at %s ===\n",
-                query_time_stamp().GetString());
-            fputs(end_msg, file_p);
-        }
-
-        if (own_file)
-        {
-            fclose(file_p);
-        }
-        file_p = nullptr;
-    }
 }
 
 void AtlTraceRedirect::Enable()
 {
-    if (file_p != nullptr)
+    if (!System::Object::ReferenceEquals(logger, nullptr))
     {
         enable_redirect = true;
     }
@@ -84,11 +34,6 @@ void AtlTraceRedirect::Disable()
 
 void AtlTraceRedirect::flush_stream()
 {
-    if (file_p != nullptr)
-    {
-        CSingleLock file_mut_lock(&file_mut);
-        fflush(file_p);
-    }
 }
 
 CStringA AtlTraceRedirect::query_time_stamp() const
@@ -116,7 +61,7 @@ CStringA AtlTraceRedirect::query_time_stamp() const
 
 void AtlTraceRedirect::write_log(const char* file_name_full, int line_num, const char* message)
 {
-    if (!enable_redirect || file_p == nullptr || message == nullptr)
+    if (!enable_redirect || System::Object::ReferenceEquals(logger, nullptr) || message == nullptr)
         return;
 
     CSingleLock file_mut_lock(&file_mut);
@@ -148,12 +93,22 @@ void AtlTraceRedirect::write_log(const char* file_name_full, int line_num, const
 
     log_line += message;
 
-    if (log_line.IsEmpty() || log_line[log_line.GetLength() - 1] != '\n')
+    if (!log_line.IsEmpty() && log_line[log_line.GetLength() - 1] == '\n')
     {
-        log_line += "\n";
+        log_line.Remove('\n');
     }
 
-    fputs(log_line, file_p);
+    System::String^ managedLog = gcnew System::String(log_line);
+
+    System::Type^ loggerType = logger->GetType();
+    array<System::Type^>^ paramTypes = gcnew array<System::Type^>(1) { System::String::typeid };
+    System::Reflection::MethodInfo^ logMethod = loggerType->GetMethod("LogInformation", paramTypes);
+
+    if (logMethod != nullptr)
+    {
+        array<System::Object^>^ args = gcnew array<System::Object^>(1) { managedLog };
+        logMethod->Invoke(logger, args);
+    }
 }
 
 CStringA AtlTraceRedirect::format_message_va(const wchar_t* format, va_list args)
@@ -179,7 +134,7 @@ CStringA AtlTraceRedirect::format_message_va(const char* format, va_list args)
 
 void AtlTraceRedirect::TraceEx(const char* file_name, int line_num, const wchar_t* format, ...)
 {
-    if (!enable_redirect || file_p == nullptr || format == nullptr)
+    if (!enable_redirect || format == nullptr)
         return;
 
     va_list args;
@@ -192,7 +147,7 @@ void AtlTraceRedirect::TraceEx(const char* file_name, int line_num, const wchar_
 
 void AtlTraceRedirect::TraceEx(const char* file_name, int line_num, const char* format, ...)
 {
-    if (!enable_redirect || file_p == nullptr || format == nullptr)
+    if (!enable_redirect || format == nullptr)
         return;
 
     va_list args;
@@ -205,7 +160,7 @@ void AtlTraceRedirect::TraceEx(const char* file_name, int line_num, const char* 
 
 void AtlTraceRedirect::Trace(const wchar_t* format, ...)
 {
-    if (!enable_redirect || file_p == nullptr || format == nullptr)
+    if (!enable_redirect || format == nullptr)
         return;
 
     va_list args;
@@ -218,7 +173,7 @@ void AtlTraceRedirect::Trace(const wchar_t* format, ...)
 
 void AtlTraceRedirect::Trace(const char* format, ...)
 {
-    if (!enable_redirect || file_p == nullptr || format == nullptr)
+    if (!enable_redirect || format == nullptr)
         return;
 
     va_list args;
