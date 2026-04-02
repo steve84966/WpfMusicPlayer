@@ -29,6 +29,7 @@ namespace MusicPlayerLibrary
 	public:
 		void ExecuteAudioFFT();
 		const std::vector<float> GetAudioFFTData();
+		void SetDelayFrames(int frames);
 		void StartFFTThread();
 		void StopFFTThread();
 		void FFTWorkerLoop();
@@ -47,6 +48,11 @@ namespace MusicPlayerLibrary
 		std::condition_variable ring_buffer_cv;
 		std::thread fft_worker_thread;
 		std::atomic<bool> fft_thread_running{ false };
+
+		// delay queue for latency compensation
+		std::deque<std::vector<float>> spectrum_delay_queue;
+		std::atomic<int> delay_frames{0};
+		static constexpr size_t MAX_DELAY_QUEUE_SIZE = 128;
 
 		// avoid duplicate allocation
 		kiss_fft_cfg fft_cfg = nullptr;

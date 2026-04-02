@@ -2,6 +2,7 @@
 
 #include "MusicPlayerLibrary.h"
 #include <msclr/marshal_cppstd.h>
+#include <numeric>
 
 using namespace System::Runtime::InteropServices;
 
@@ -1064,6 +1065,23 @@ void MusicPlayerLibrary::MusicPlayerNative::audio_playback_worker_thread()
 			// ATLTRACE("info: samples played=%lld, cur played_buffers=%lld, cur samples=%lld, xaudio2 buffer arr size=%lld\n",
 			// 	state.SamplesPlayed, played_buffers, samples_sum, xaudio2_playing_buffers.size());
 			// std::printf("info: buffer played=%zd\n", played_buffers);
+			if (fft_executer)
+			{
+				int latency_bytes = std::transform_reduce(xaudio2_playing_buffers.begin(), xaudio2_playing_buffers.end(), 
+					0, 
+					std::plus{},
+					[](auto buf) {
+						return buf->AudioBytes;
+					}
+				);
+				// Samples = Bytes / nBlockAlign
+				int latency_samples = latency_bytes / wfx.nBlockAlign;
+				// Time = Samples / SamplesPerSec
+				int latency_ms = static_cast<int>(
+					static_cast<double>(latency_samples) * 1000.0 / wfx.nSamplesPerSec
+				);
+				fft_executer->SetDelayFrames(latency_ms / 16);
+			}
 			decode_time_ms = static_cast<double>(xaudio2_played_samples - prev_decode_cycle_xaudio2_played_samples) * 1000.0 / wfx.nSamplesPerSec;
 			prev_decode_cycle_xaudio2_played_samples = xaudio2_played_samples;
 			elapsed_time = static_cast<float>(static_cast<double>(xaudio2_played_samples) * 1.0 / wfx.nSamplesPerSec + this->pts_seconds);
