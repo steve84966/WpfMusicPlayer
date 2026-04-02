@@ -178,14 +178,32 @@ void MusicPlayerLibrary::FFTExecuter::ExecuteAudioFFT()
         }
 
         spectrum_data = spectrum_smooth_data;
+
+        // 将计算好的数据推送至delay_queue中，用于延迟补偿
+        spectrum_delay_queue.push_back(spectrum_data);
+        while (spectrum_delay_queue.size() > MAX_DELAY_QUEUE_SIZE)
+            spectrum_delay_queue.pop_front();
     }
    
 }
 
 const std::vector<float> MusicPlayerLibrary::FFTExecuter::GetAudioFFTData()
 {
-    std::lock_guard<std::mutex> lock(spectrum_data_mutex);
-    return spectrum_data;
+    std::lock_guard lock(spectrum_data_mutex);
+    if (spectrum_delay_queue.empty())
+        return {};
+
+    int delay = delay_frames.load();
+    int queue_size = static_cast<int>(spectrum_delay_queue.size());
+    // 从设置的延迟值中，计算该帧的索引
+    int target = queue_size - 1 - delay;
+    if (target < 0) target = 0;
+    return spectrum_delay_queue[target];
+}
+
+void MusicPlayerLibrary::FFTExecuter::SetDelayFrames(int frames)
+{
+    delay_frames.store(frames > 0 ? frames : 0);
 }
 
 void MusicPlayerLibrary::FFTExecuter::StartFFTThread()
@@ -207,6 +225,7 @@ void MusicPlayerLibrary::FFTExecuter::StopFFTThread()
     
     spectrum_data.clear();
     spectrum_smooth_data.clear();
+    spectrum_delay_queue.clear();
     spectrum_data_ring_buffer.clear();
     fft_in.clear();
     fft_out.clear();
