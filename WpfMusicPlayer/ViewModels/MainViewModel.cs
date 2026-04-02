@@ -11,6 +11,7 @@ using WpfMusicPlayer.Services.Abstractions;
 using static WpfMusicPlayer.Models.ConfigData;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
 
 namespace WpfMusicPlayer.ViewModels;
 
@@ -46,6 +47,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _isPlaylistUserOpened;
     private bool _isPlaylistDirty;
     private bool _disableAutoAdvance;
+    private bool _isDisposed;
+    private readonly ILogger<MainViewModel> _logger;
 
     public MainViewModel(
         IConfigProvider configProvider, 
@@ -53,7 +56,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ISmtcService smtcService, 
         ISongDatabaseService songDatabase, 
         ICommandLineParser commandLineParser,
-        IPlaylistProvider playlistProvider)
+        IPlaylistProvider playlistProvider,
+        ILogger<MainViewModel> logger)
     {
         _configProvider = configProvider;
         _fileDialogService = fileDialogService;
@@ -61,6 +65,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _songDatabase = songDatabase;
         _commandLineParser = commandLineParser;
         _playlistProvider = playlistProvider;
+        _logger = logger;
         _syncContext = SynchronizationContext.Current!;
         Equalizer = new EqualizerViewModel(ApplyEqualizerBand);
         Settings = new SettingsViewModel(configProvider);
@@ -72,15 +77,17 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SubscribePlayerEvents();
         SubscribeSmtcEvents();
         RestoreSettingsFromCommandLine();
-
+        _logger.LogInformation("MainViewModel initialized, sample rate: {SampleRate}", _sampleRate);
     }
 
     private void RestoreSettingsFromCommandLine()
     {
+        _logger.LogInformation("Restoring settings from command line");
         Volume = _commandLineParser.Volume;
 
         if (string.IsNullOrEmpty(_commandLineParser.FilePath))
         {
+            _logger.LogInformation("No file path from command line, using startup view: {View}", _commandLineParser.StartupView);
             ActiveView = _commandLineParser.StartupView;
             return;
         }
@@ -106,6 +113,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _isRestoredFromCommandLine = true;
         }
 
+        _logger.LogInformation("Restoring file from command line: {FilePath}, autoPlay: {AutoPlay}, seekTime: {SeekTime}",
+            _commandLineParser.FilePath, _enableAutoPlay, _pendingSeekTime);
         OpenFile(_commandLineParser.FilePath);
     }
 
@@ -197,6 +206,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (!SetProperty(ref field, value)) return;
             _playlistProvider.GetPlaylist().Name = value;
+            _logger.LogInformation("User changed playlist title, mark playlist as dirty");
                 
             _isPlaylistUserOpened = true;
             _isPlaylistDirty = true;
@@ -249,8 +259,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public void OpenFile(string filePath)
     {
         // 避免对_musicPlayer的重复析构
+        _logger.LogInformation("Attempting to acquire OpenFile lock");
         lock (_openFileLock)
         {
+            _logger.LogInformation("OpenFile lock acquired, filePath: {FilePath}", filePath);
             if (ActiveView != ActiveView.Player
                 && ActiveView != ActiveView.Playlist
                 && !_isRestoredFromCommandLine)
@@ -263,12 +275,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var isNcm = Path.GetExtension(filePath).Equals(".ncm", StringComparison.OrdinalIgnoreCase);
             if (isNcm)
             {
+                _logger.LogInformation("NCM file detected, starting decode: {FilePath}", filePath);
                 _syncContext.Send(_ => IsDecoding = true, null);
             }
             try
             {
                 _currentFilePath = filePath;
                 _currentMd5 = ComputeFileMd5(filePath);
+                _logger.LogInformation("File MD5 computed: {Md5}", _currentMd5);
                 _musicPlayer.Dispose();
                 _musicPlayer = new MusicPlayer(_sampleRate);
                 SubscribePlayerEvents();
@@ -292,6 +306,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var timeInSec = _musicPlayer.GetMusicTimeLength();
         var targetTime = timeInSec * (float)ProgressValue / (float)ProgressMaximum;
         var isPlaying = _musicPlayer.IsPlaying();
+        _logger.LogInformation("SeekToCurrentPosition: targetTime={TargetTime}s, isPlaying={IsPlaying}", targetTime, isPlaying);
 
         IsDraggingSlider = true;
 
@@ -321,6 +336,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         var targetTimeSec = lyric.TimeMs / 1000f;
         var isPlaying = _musicPlayer.IsPlaying();
+        _logger.LogInformation("SeekToLyric: timeMs={TimeMs}, targetTimeSec={TargetTime}s", lyric.TimeMs, targetTimeSec);
 
         IsDraggingSlider = true;
 
@@ -346,6 +362,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public void OnWindowClosed()
     {
+        _logger.LogInformation("Window closed, stopping music player");
         if (_musicPlayer.IsInitialized())
         {
             _musicPlayer.Stop();
@@ -357,6 +374,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnSettingChanged(object? sender, SettingChangedEventArgs e)
     {
+        _logger.LogInformation("Setting changed: {SettingName}", e.SettingName);
         if (e.SettingName == nameof(SettingsViewModel.SelectedBackground))
         {
             CurrentBackgroundMode = _configProvider.GetConfig().UI.Background;
@@ -378,11 +396,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
-        Settings.SettingChanged -= OnSettingChanged;
-        GCSettings.LatencyMode = _previousLatencyMode;
-        _musicPlayer.Dispose();
-        _songDatabase.Dispose();
-        GC.SuppressFinalize(this);
+        if (!_isDisposed)
+        {
+            _logger.LogInformation("MainViewModel disposing, releasing resources");
+            Settings.SettingChanged -= OnSettingChanged;
+            GCSettings.LatencyMode = _previousLatencyMode;
+            _musicPlayer.Dispose();
+            _logger.LogInformation("MusicPlayer disposed");
+            _songDatabase.Dispose();
+            _logger.LogInformation("SongDatabase disposed");
+            GC.SuppressFinalize(this);
+        }
+
+        _isDisposed = true;
     }
 
     public async Task SetSampleRate(int sampleRate)
@@ -392,6 +418,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             throw new ArgumentOutOfRangeException(nameof(sampleRate), "Sample rate must be between 8000 and 192000 Hz.");
         }
+        _logger.LogInformation("Sample rate changed: {OldRate} -> {NewRate}", _sampleRate, sampleRate);
         _sampleRate = sampleRate;
         if (_currentFilePath != null)
         {
@@ -427,6 +454,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         _syncContext.Post(_ =>
         {
+            _logger.LogInformation("OnFileInit: file initialized, loading metadata");
             IsDecoding = false;
             var length = _musicPlayer.GetMusicTimeLength();
             ProgressMaximum = length;
@@ -436,11 +464,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (cached is not null)
             {
                 // 优先使用数据库缓存
+                _logger.LogInformation("OnFileInit: using cached metadata for {Md5}, title: {Title}", _currentMd5, cached.Title);
                 SongTitle = cached.Title;
                 ArtistName = cached.Artist;
             }
             else
             {
+                _logger.LogInformation("OnFileInit: no cache found, reading metadata from file");
                 SongTitle = _musicPlayer.GetSongTitle() ?? "Unknown Title";
                 ArtistName = _musicPlayer.GetSongArtist() ?? "Unknown Artist";
 
@@ -465,6 +495,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             LoadLyrics();
             if (_pendingSeekTime is { } seekTime)
             {
+                _logger.LogInformation("OnFileInit: applying pending seek to {SeekTime}s", seekTime);
                 _pendingSeekTime = null;
                 _musicPlayer.SeekToPosition(seekTime, true);
                 ProgressValue = seekTime;
@@ -488,9 +519,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 {
                     // 优先使用数据库缓存的专辑图片，丢弃解码得到的图片
                     AlbumCoverImage = LoadBitmapImageFromBytes(cached.AlbumArt);
+                    _logger.LogInformation("Cached MD5 hit, discarding decoded image");
                 }
                 else
                 {
+                    _logger.LogInformation("MD5 miss, loading image from OnAlbumArtInit");
                     AlbumCoverImage = image != null ? ConvertDrawingImageToWpfImage(image) : null;
 
                     // 将解码得到的图片写入数据库缓存
@@ -498,12 +531,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     {
                         if (image is not null)
                         {
+                            _logger.LogInformation("Save image as PNG raw data");
                             using var artStream = new MemoryStream();
                             image.Save(artStream, System.Drawing.Imaging.ImageFormat.Png);
                             cached.AlbumArt = artStream.ToArray();
                         }
                         else
                         {
+                            _logger.LogInformation("Image is null, exiting");
                             cached.AlbumArt = null;
                         }
                         _songDatabase.Upsert(cached);
@@ -523,6 +558,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     stream = new MemoryStream();
                     image.Save(stream, System.Drawing.Imaging.ImageFormat.Png);
                     stream.Position = 0;
+                    _logger.LogInformation("Update PNG stream for SMTC controller read");
                 }
                 _smtcService.UpdateMetadata(SongTitle, ArtistName, stream);
                 stream?.Dispose();
@@ -572,6 +608,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnStart()
     {
+        _logger.LogInformation("OnStart: playback started, switching to SustainedLowLatency GC mode");
         _previousLatencyMode = GCSettings.LatencyMode;
         GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
         if (_currentMd5 is not null)
@@ -591,6 +628,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnPause()
     {
+        _logger.LogInformation("OnPause: playback paused, restoring GC mode");
         GCSettings.LatencyMode = _previousLatencyMode;
         _syncContext.Post(_ =>
         {
@@ -602,6 +640,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnStop()
     {
+        _logger.LogInformation("OnStop: playback stopped, restoring GC mode");
         GCSettings.LatencyMode = _previousLatencyMode;
         _syncContext.Post(_ =>
         {
@@ -622,7 +661,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     Lyrics[CurrentLyricIndex].Progress = _lrcFileController.GetLrcPercentage(CurrentLyricIndex);
                 }
             }
-            if (!_disableAutoAdvance)
+            if (!_disableAutoAdvance && !_isDisposed)
                 AutoAdvance();
             _disableAutoAdvance = false;
         }, null);
@@ -650,6 +689,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             PlayMode.SingleLoop => PlayMode.Shuffle,
             _ => PlayMode.Sequential
         };
+        _logger.LogInformation("Play mode changed to {PlayMode}", CurrentPlayMode);
         _shuffleHistory.Clear();
     }
 
@@ -658,33 +698,41 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (PlaylistItems.Count == 0)
         {
+            _logger.LogInformation("No songs available in playlist, stopping playback");
             StopPlayback();
             return;
         }
 
+        var currentIndex = GetCurrentPlaylistIndex();
         if (CurrentPlayMode == PlayMode.Shuffle)
         {
             if (_shuffleHistory.Count > 0)
             {
+                _logger.LogInformation("Popping previous shuffled track from stack");
                 var prevPath = _shuffleHistory.Pop();
                 PlaySongByPath(prevPath);
             }
             else
             {
-                StopPlayback();
+                int nextIndex;
+                do
+                {
+                    nextIndex = _shuffleRandom.Next(PlaylistItems.Count);
+                } while (nextIndex == currentIndex && PlaylistItems.Count > 1);
             }
             return;
         }
 
-        var currentIndex = GetCurrentPlaylistIndex();
         if (currentIndex < 0)
         {
+            _logger.LogInformation("Invalid current index, stopping playback");
             StopPlayback();
             return;
         }
 
         if (CurrentPlayMode == PlayMode.SingleLoop)
         {
+            _logger.LogInformation("Single Loop triggered, playing current song");
             PlaySongByPath(PlaylistItems[currentIndex].FilePath);
             return;
         }
@@ -694,6 +742,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (CurrentPlayMode == PlayMode.ListLoop)
             {
+                _logger.LogInformation("List loop triggered, playing song in the end of playlist");
                 prevIndex = PlaylistItems.Count - 1;
             }
             else
@@ -711,6 +760,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (PlaylistItems.Count == 0)
         {
+            _logger.LogInformation("No songs available in playlist, stopping playback");
             StopPlayback();
             return;
         }
@@ -718,10 +768,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (CurrentPlayMode == PlayMode.Shuffle)
         {
             if (_currentFilePath != null)
+            {
+                _logger.LogInformation("Push current index to shuffle stack");
                 _shuffleHistory.Push(_currentFilePath);
+            }
 
             if (PlaylistItems.Count == 1)
             {
+                _logger.LogInformation("Shuffle enabled and only 1 file in playlist, repeating");
                 PlaySongByPath(PlaylistItems[0].FilePath);
                 return;
             }
@@ -730,6 +784,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var currentIndex = GetCurrentPlaylistIndex();
             do
             {
+                _logger.LogInformation("Attempting to generate new playlist index");
                 nextIndex = _shuffleRandom.Next(PlaylistItems.Count);
             } while (nextIndex == currentIndex && PlaylistItems.Count > 1);
 
@@ -746,6 +801,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (CurrentPlayMode == PlayMode.SingleLoop)
         {
+            _logger.LogInformation("Single Loop triggered, playing current song");
             PlaySongByPath(PlaylistItems[curIndex].FilePath);
             return;
         }
@@ -755,11 +811,13 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             if (CurrentPlayMode == PlayMode.ListLoop)
             {
+                _logger.LogInformation("List loop triggered, playing song in the start of playlist");
                 nextIdx = 0;
             }
             else
             {
                 // 顺序播放在下一曲不可用时停止
+                _logger.LogInformation("No songs available in playlist, stop!");
                 StopPlayback();
                 return;
             }
@@ -771,6 +829,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void AutoAdvance()
     {
         if (PlaylistItems.Count == 0) return;
+        _logger.LogInformation("AutoAdvance triggered, current play mode: {PlayMode}", CurrentPlayMode);
 
         switch (CurrentPlayMode)
         {
@@ -783,6 +842,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             case PlayMode.Shuffle:
                 NextSong();
                 break;
+            default:
+                throw new ArgumentOutOfRangeException();
         }
     }
 
@@ -799,6 +860,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void PlaySongByPath(string filePath)
     {
+        _logger.LogInformation("PlaySongByPath: {FilePath}", filePath);
         _enableAutoPlay = true;
         try
         {
@@ -806,6 +868,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            _logger.LogError("Exception thrown: {Message}", ex.Message);
             WpfMessageBox.Show($"{ex.Message}\n{filePath}", "Error", WpfMessageBoxIcon.Error);
         }
     }
@@ -813,6 +876,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     // 手动触发停止播放，不进行AutoAdvance
     private void StopPlayback()
     {
+        _logger.LogInformation("StopPlayback: manual stop requested, disabling auto-advance");
         _disableAutoAdvance = true;
         if (_musicPlayer.IsInitialized() && _musicPlayer.IsPlaying())
         {
@@ -829,16 +893,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (!_musicPlayer.IsInitialized())
         {
+            _logger.LogInformation("PlayPause: player not initialized, ignoring");
             _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
             return;
         }
 
         if (_musicPlayer.IsPlaying())
         {
+            _logger.LogInformation("PlayPause: pausing playback");
             _musicPlayer.Pause();
         }
         else
         {
+            _logger.LogInformation("PlayPause: resuming playback");
             IsDraggingSlider = true;
             _musicPlayer.Start();
             await Task.Delay(200);
@@ -851,17 +918,24 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (IsFileDialogOpen == true) { return; }
         IsFileDialogOpen = true;
+        _logger.LogInformation("OpenAsync: opening file dialog");
         var path = await _fileDialogService.PickMusicFileAsync();
 
         IsFileDialogOpen = false;
-        if (path == null) return;
+        if (path == null)
+        {
+            _logger.LogInformation("OpenAsync: user cancelled file dialog");
+            return;
+        }
 
+        _logger.LogInformation("OpenAsync: user selected file {FilePath}", path);
         try
         {
             await Task.Run(() => OpenFile(path));
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "OpenAsync: failed to open file {FilePath}", path);
             WpfMessageBox.Show($"{ex.Message}\n{path}", "Error",
                 WpfMessageBoxIcon.Error);
             // reset state
@@ -884,6 +958,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task OpenPlaylistAsync()
     {
+        _logger.LogInformation("OpenPlaylistAsync: opening playlist");
         if (HasUnsavedPlaylistChanges)
         {
             var result = WpfMessageBox.Show(
@@ -910,9 +985,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (path == null) return;
         try
         {
+            _logger.LogInformation("OpenPlaylistAsync: loading playlist from {Path}", path);
             var errorCode = _playlistProvider.Load(path);
             if (errorCode != IPlaylistProvider.ErrorCode.NoError)
             {
+                _logger.LogWarning("OpenPlaylistAsync: failed to load playlist, error: {ErrorCode}", errorCode);
                 WpfMessageBox.Show($"加载播放列表失败: {errorCode}", "Error", WpfMessageBoxIcon.Error);
                 return;
             }
@@ -959,6 +1036,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 var first = PlaylistItems[0];
                 _enableAutoPlay = IsMusicPlaying;
+                _logger.LogInformation("OpenPlaylistAsync: loaded {Count} items, playing first: {FilePath}", PlaylistItems.Count, first.FilePath);
 
                 await Task.Run(() => OpenFile(first.FilePath));
             }
@@ -968,6 +1046,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "OpenPlaylistAsync: failed to load playlist from {Path}", path);
             WpfMessageBox.Show($"加载播放列表失败: {ex.Message}\n{path}", "Error", WpfMessageBoxIcon.Error);
         }
     }
@@ -975,6 +1054,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public async Task SavePlaylistAsync()
     {
+        _logger.LogInformation("SavePlaylistAsync: saving playlist");
         var path = _playlistProvider.CurrentFilePath;
 
         if (string.IsNullOrEmpty(path))
@@ -1011,15 +1091,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
             var errorCode = _playlistProvider.Save(path);
             if (errorCode != IPlaylistProvider.ErrorCode.NoError)
             {
+                _logger.LogWarning("SavePlaylistAsync: save failed with error: {ErrorCode}", errorCode);
                 WpfMessageBox.Show($"保存播放列表失败: {errorCode}", "Error", WpfMessageBoxIcon.Error);
             }
             else
             {
+                _logger.LogInformation("SavePlaylistAsync: playlist saved to {Path}, {Count} items", path, PlaylistItems.Count);
                 _isPlaylistDirty = false;
             }
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "SavePlaylistAsync: failed to save playlist to {Path}", path);
             WpfMessageBox.Show($"保存播放列表失败: {ex.Message}\n{path}", "Error", WpfMessageBoxIcon.Error);
         }
     }
@@ -1029,6 +1112,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         if (IsFileDialogOpen) return;
         IsFileDialogOpen = true;
+        _logger.LogInformation("AddSongToPlaylistAsync: opening file dialog for adding songs");
         var paths = await _fileDialogService.PickMusicFilesAsync();
         IsFileDialogOpen = false;
 
@@ -1048,6 +1132,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 itemVM.AlbumCover = LoadBitmapImageFromBytes(cached.AlbumArt);
 
             PlaylistItems.Add(itemVM);
+            _logger.LogInformation("AddSongToPlaylistAsync: added {Title} to playlist", title);
             _isPlaylistUserOpened = true;
             _isPlaylistDirty = true;
         }
@@ -1057,6 +1142,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void RemoveSongFromPlaylist(PlaylistItemViewModel? item)
     {
         if (item == null) return;
+        _logger.LogInformation("RemoveSongFromPlaylist: removing {Title} from playlist", item.Title);
         PlaylistItems.Remove(item);
         _isPlaylistUserOpened = true;
         _isPlaylistDirty = true;
@@ -1072,6 +1158,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
         if (string.IsNullOrEmpty(path) || !File.Exists(path)) return;
 
+        _logger.LogInformation("ChangePlaylistCoverAsync: loading cover from {Path}", path);
         try
         {
             var imageBytes = await File.ReadAllBytesAsync(path);
@@ -1093,6 +1180,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, "ChangePlaylistCoverAsync: failed to set cover from {Path}", path);
             WpfMessageBox.Show($"设置封面失败: {ex.Message}", "Error", WpfMessageBoxIcon.Error);
         }
     }
@@ -1120,6 +1208,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void LoadLyrics()
     {
+        _logger.LogInformation("LoadLyrics: loading lyrics for {FilePath}", _currentFilePath);
         // FFmpeg会自动转换ID3v2 tag到UTF-8
         var lyricsStr = _musicPlayer.GetID3Lyric();
         Lyrics.Clear();
@@ -1131,6 +1220,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             try
             {
+                _logger.LogInformation("LoadLyrics: found embedded ID3 lyrics");
                 ParseAndAddLocalLyric(lyricsStr);
                 return;
             }
@@ -1145,6 +1235,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var lrcPath = FindBestLrcFile();
         if (!string.IsNullOrEmpty(lrcPath))
         {
+            _logger.LogInformation("LoadLyrics: found best match LRC file: {LrcPath}", lrcPath);
             try
             {
                 var content_bytes = File.ReadAllBytes(lrcPath);
@@ -1162,6 +1253,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         var exactLrcPath = Path.ChangeExtension(_currentFilePath, ".lrc");
         if (File.Exists(exactLrcPath))
         {
+            _logger.LogInformation("LoadLyrics: fallback to exact LRC path: {LrcPath}", exactLrcPath);
             try
             {
                 var content_bytes = File.ReadAllBytes(exactLrcPath);
@@ -1177,6 +1269,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
 
         _lrcFileController = null;
+        _logger.LogInformation("LoadLyrics: no lyrics found");
         Lyrics.Add(new LyricLineViewModel("暂无歌词"));
     }
 
@@ -1295,6 +1388,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             || _currentMd5 == null) return;
         if (PlaylistItems.All(p => p.FilePath != _currentFilePath))
         {
+            _logger.LogInformation("AddToPlaylist: adding new song to playlist: {FilePath}", _currentFilePath);
             // query database, get album cover
             var cached = _songDatabase.FindByMd5(_currentMd5);
             var itemVM = new PlaylistItemViewModel(
@@ -1315,6 +1409,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async void PlayFromPlaylist(PlaylistItemViewModel item)
     {
         // IsPlaylistVisible = false;
+        _logger.LogInformation("PlayFromPlaylist: user selected {Title} ({FilePath})", item.Title, item.FilePath);
         try
         {
             _enableAutoPlay = true;

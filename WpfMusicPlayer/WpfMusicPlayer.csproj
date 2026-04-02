@@ -23,10 +23,20 @@
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.5" />
     <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.5" />
     <PackageReference Include="Microsoft.Windows.CsWinRT" Version="2.2.0" />
+    <PackageReference Include="Serilog.Extensions.Hosting" Version="10.0.0" />
+    <PackageReference Include="Serilog.Settings.Configuration" Version="10.0.1-dev-02330" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="6.1.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="8.0.0-nblumhardt-02322" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\MusicPlayerLibrary\MusicPlayerLibrary.vcxproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="WpfMusicPlayer.appsettings.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 	
 </Project>
