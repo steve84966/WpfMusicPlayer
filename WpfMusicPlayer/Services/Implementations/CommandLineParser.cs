@@ -1,92 +1,75 @@
-﻿using System.Globalization;
+﻿using Microsoft.Extensions.Configuration;
 using WpfMusicPlayer.Services.Abstractions;
 using WpfMusicPlayer.ViewModels;
 
 namespace WpfMusicPlayer.Services.Implementations;
 
-internal class CommandLineParser : ICommandLineParser
+public class CommandLineParser : ICommandLineParser
 {
-    public string FilePath { get; }
+    private readonly IConfiguration _configuration;
 
-    public float MusicCurrentTime { get; }
-
-    public bool AutoStart { get; }
-
-    public float Volume { get; }
-
-    public ActiveView StartupView { get; }
-
-    public string OpenedPlaylistPath { get; }
-
-    public bool TranslationToggled { get; }
-
-    public bool RomanjiToggled { get; }
-
-    public int[] AppliedEqualizerSettings { get; }
-
-    public CommandLineParser()
+    public CommandLineParser(string[] args)
     {
-        string[] args = Environment.GetCommandLineArgs();
-
-        System.Diagnostics.Debug.WriteLine("Command-line arguments: " + string.Join(" ", args));
-
-        FilePath = string.Empty;
-        OpenedPlaylistPath = string.Empty;
-        Volume = 0.5f;
-        StartupView = ActiveView.Player;
-        AppliedEqualizerSettings = [];
-
-        for (int i = 1; i < args.Length; i++)
+        var switchMappings = new Dictionary<string, string>
         {
-            switch (args[i].ToLowerInvariant())
-            {
-                case "--file" when i + 1 < args.Length:
-                    FilePath = args[++i];
-                    break;
+            { "--file", "FilePath" },
+            { "-f", "FilePath" },
+            { "--time", "MusicCurrentTime" },
+            { "-t", "MusicCurrentTime" },
+            { "--autostart", "AutoStart" },
+            { "-a", "AutoStart" },
+            { "--volume", "Volume" },
+            { "-v", "Volume" },
+            { "--view", "StartupView" },
+            { "--playlist", "OpenedPlaylistPath" },
+            { "-p", "OpenedPlaylistPath" },
+            { "--translation", "TranslationToggled" },
+            { "--romanji", "RomanjiToggled" }
+        };
 
-                case "--time" when i + 1 < args.Length:
-                    if (float.TryParse(args[++i], CultureInfo.InvariantCulture, out float time))
-                        MusicCurrentTime = time;
-                    break;
+        _configuration = new ConfigurationBuilder()
+            .AddCommandLine(args, switchMappings)
+            .Build();
+    }
 
-                case "--autostart":
-                    AutoStart = true;
-                    break;
+    public string FilePath =>
+        _configuration["FilePath"] ?? string.Empty;
 
-                case "--volume" when i + 1 < args.Length:
-                    if (float.TryParse(args[++i], CultureInfo.InvariantCulture, out float vol))
-                        Volume = vol;
-                    break;
+    public float MusicCurrentTime =>
+        float.TryParse(_configuration["MusicCurrentTime"], out var time) ? time : 0f;
 
-                case "--view" when i + 1 < args.Length:
-                    if (Enum.TryParse(args[++i], true, out ActiveView view))
-                        StartupView = view;
-                    break;
+    public bool AutoStart =>
+        bool.TryParse(_configuration["AutoStart"], out var auto) && auto;
 
-                case "--playlist" when i + 1 < args.Length:
-                    OpenedPlaylistPath = args[++i];
-                    break;
+    public float Volume =>
+        float.TryParse(_configuration["Volume"], out var vol) ? vol : 1.0f;
 
-                case "--translation":
-                    TranslationToggled = true;
-                    break;
+    public ActiveView StartupView =>
+        Enum.TryParse<ActiveView>(_configuration["StartupView"], true, out var view)
+            ? view
+            : ActiveView.Player;
 
-                case "--romanji":
-                    RomanjiToggled = true;
-                    break;
+    public string OpenedPlaylistPath =>
+        _configuration["OpenedPlaylistPath"] ?? string.Empty;
 
-                case "--equalizer" when i + 1 < args.Length:
-                    AppliedEqualizerSettings = [.. args[++i]
-                        .Split(',', StringSplitOptions.RemoveEmptyEntries)
-                        .Select(s => int.TryParse(s.Trim(), CultureInfo.InvariantCulture, out int v) ? v : 0)];
-                    break;
+    public bool TranslationToggled =>
+        bool.TryParse(_configuration["TranslationToggled"], out var t) && t;
 
-                default:
-                    // 默认选项为直接输入文件路径
-                    if (!args[i].StartsWith("--") && string.IsNullOrEmpty(FilePath))
-                        FilePath = args[i];
-                    break;
-            }
+    public bool RomanjiToggled =>
+        bool.TryParse(_configuration["RomanjiToggled"], out var r) && r;
+
+    public int[] AppliedEqualizerSettings
+    {
+        get
+        {
+            var section = _configuration.GetSection("eq");
+            var children = section.GetChildren().ToList();
+            if (children.Count == 0)
+                return [];
+            return children
+                .OrderBy(c => int.TryParse(c.Key, out var k) ? k : 0)
+                .Select(c => int.TryParse(c.Value, out var v) ? v : 0)
+                .ToArray();
         }
     }
 }
