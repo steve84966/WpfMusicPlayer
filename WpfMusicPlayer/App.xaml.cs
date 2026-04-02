@@ -2,6 +2,7 @@
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Windows;
+using Microsoft.Extensions.Configuration;
 using WpfMusicPlayer.Helpers;
 using WpfMusicPlayer.Services.Abstractions;
 using WpfMusicPlayer.Services.Implementations;
@@ -37,7 +38,8 @@ public partial class App : Application
                 services.AddSingleton<IPlaylistProvider, PlaylistProvider>();
 
                 services.AddTransient<IFileDialogService, FileDialogService>();
-                services.AddTransient<ICommandLineParser, CommandLineParser>();
+                services.AddTransient<ICommandLineParser>(_ =>
+                    new CommandLineParser(Environment.GetCommandLineArgs()));
 
                 services.AddSingleton<MainViewModel>();
 

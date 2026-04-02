@@ -32,32 +32,48 @@ internal static class RebootApplicationHelper
         if (currentItem is not null)
         {
             parts.Add("--file");
-            parts.Add($"\"{currentItem.FilePath}\"");
-
+            parts.Add(Quote(currentItem.FilePath));
             parts.Add("--time");
             parts.Add(((float)vm.ProgressValue).ToString(CultureInfo.InvariantCulture));
-
-            // "\u23F8" is the pause icon, shown when music is playing
             if (vm.IsMusicPlaying)
+            {
                 parts.Add("--autostart");
+                parts.Add("true");
+            }
         }
-
         parts.Add("--volume");
         parts.Add(((float)vm.Volume).ToString(CultureInfo.InvariantCulture));
-
         parts.Add("--view");
         parts.Add(vm.ActiveView.ToString());
-
+        // 预留的接口
+        // if (!string.IsNullOrEmpty(vm.OpenedPlaylistPath))
+        // {
+        //     parts.Add("--playlist");
+        //     parts.Add(Quote(vm.OpenedPlaylistPath));
+        // }
         if (vm.IsTranslationVisible)
+        {
             parts.Add("--translation");
-
+            parts.Add("true");
+        }
         if (vm.IsRomanjiVisible)
+        {
             parts.Add("--romanji");
+            parts.Add("true");
+        }
+        // 注意: Microsoft.Extensions.Configuration.Logging以子键方式索引数组
+        // 例如: --eq:0 1 --eq:1 3 --eq:2 5
+        var bands = vm.Equalizer.Bands;
+        for (var i = 0; i < bands.Count; i++)
+        {
+            parts.Add($"--eq:{i}");
+            parts.Add(bands[i].Value.ToString(CultureInfo.InvariantCulture));
+        }
 
-        var eqValues = vm.Equalizer.Bands.Select(b => b.Value.ToString(CultureInfo.InvariantCulture));
-        parts.Add("--equalizer");
-        parts.Add(string.Join(",", eqValues));
-
-        return string.Join(" ", parts);
+        var result = string.Join(" ", parts);
+        return result;
     }
+    
+    private static string Quote(string value)
+        => value.Contains(' ') ? $"\"{value}\"" : value;
 }
