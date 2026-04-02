@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using MusicPlayerLibrary;
 using Windows.Media;
 using Windows.Storage.Streams;
+using Microsoft.Extensions.Logging;
 using WinRT;
 using WpfMusicPlayer.Services.Abstractions;
 
@@ -16,16 +17,27 @@ public class SmtcService : ISmtcService
     private readonly Dispatcher _dispatcher = Application.Current?.Dispatcher ?? Dispatcher.CurrentDispatcher;
     private InMemoryRandomAccessStream? _thumbnailStream;
 
+    private ILogger<SmtcService> _logger;
     public event Action? PlayRequested;
     public event Action? PauseRequested;
     public event Action? NextRequested;
     public event Action? PreviousRequested;
 
+    public SmtcService(ILogger<SmtcService> logger)
+    {
+        _logger = logger;
+    }
+
     public void Initialize(IntPtr windowHandle)
     {
         // Use native C++/CLI helper to bypass CsWinRT activation factory proxy
+        _logger.LogInformation("Try to initialize SmtcService, use native C++ for interop");
         var smtcPtr = SmtcInteropHelper.GetSmtcForWindow(windowHandle);
-        if (smtcPtr == IntPtr.Zero) return;
+        if (smtcPtr == IntPtr.Zero)
+        {
+            _logger.LogError("SmtcInteropHelper.GetSmtcForWindow returned IntPtr.Zero");
+            return;
+        }
 
         try
         {

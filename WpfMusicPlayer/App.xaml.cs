@@ -7,6 +7,7 @@ using WpfMusicPlayer.Helpers;
 using WpfMusicPlayer.Services.Abstractions;
 using WpfMusicPlayer.Services.Implementations;
 using WpfMusicPlayer.ViewModels;
+using Serilog;
 
 namespace WpfMusicPlayer;
 
@@ -15,37 +16,41 @@ namespace WpfMusicPlayer;
 /// </summary>
 public partial class App : Application
 {
-
     private readonly IHost _host;
 
     public App()
     {
-        _host = 
+        _host =
             Host.CreateDefaultBuilder()
-            .ConfigureLogging(logging =>
-            {
-                logging.ClearProviders();
-                logging.AddConsole();
-                logging.AddDebug();
-            })
-            .ConfigureServices((_, services) =>
-            {
-                services.AddSingleton<NativeLoggerBridge>();
+                .ConfigureAppConfiguration((context, config) =>
+                {
+                    config.AddJsonFile("WpfMusicPlayer.appsettings.json", optional: false, reloadOnChange: true);
+                    config.AddJsonFile("WpfMusicPlayer.appsettings.Local.json", optional: true, reloadOnChange: true);
+                })
+                .UseSerilog((hostContext, services, loggerConfig) =>
+                {
+                    loggerConfig
+                        .ReadFrom.Configuration(hostContext.Configuration) 
+                        .ReadFrom.Services(services);
+                })
+                .ConfigureServices((_, services) =>
+                {
+                    services.AddSingleton<NativeLoggerBridge>();
 
-                services.AddSingleton<IConfigProvider, ConfigProvider>();
-                services.AddSingleton<ISmtcService, SmtcService>();
-                services.AddSingleton<ISongDatabaseService, SongDatabaseService>();
-                services.AddSingleton<IPlaylistProvider, PlaylistProvider>();
+                    services.AddSingleton<IConfigProvider, ConfigProvider>();
+                    services.AddSingleton<ISmtcService, SmtcService>();
+                    services.AddSingleton<ISongDatabaseService, SongDatabaseService>();
+                    services.AddSingleton<IPlaylistProvider, PlaylistProvider>();
 
-                services.AddTransient<IFileDialogService, FileDialogService>();
-                services.AddTransient<ICommandLineParser>(_ =>
-                    new CommandLineParser(Environment.GetCommandLineArgs()));
+                    services.AddTransient<IFileDialogService, FileDialogService>();
+                    services.AddTransient<ICommandLineParser>(_ =>
+                        new CommandLineParser(Environment.GetCommandLineArgs()));
 
-                services.AddSingleton<MainViewModel>();
+                    services.AddSingleton<MainViewModel>();
 
-                services.AddSingleton<MainWindow>();
-            })
-            .Build();
+                    services.AddSingleton<MainWindow>();
+                })
+                .Build();
     }
 
     protected override async void OnStartup(StartupEventArgs e)

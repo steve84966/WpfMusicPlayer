@@ -1,4 +1,6 @@
+using System.IO;
 using LiteDB;
+using Microsoft.Extensions.Logging;
 using WpfMusicPlayer.Models;
 using WpfMusicPlayer.Services.Abstractions;
 
@@ -8,12 +10,27 @@ public class SongDatabaseService : ISongDatabaseService
 {
     private readonly LiteDatabase _db;
     private readonly ILiteCollection<SongRecord> _songs;
+    private readonly  ILogger<SongDatabaseService> _logger;
 
-    public SongDatabaseService(string databasePath = "Songs.db")
+    public SongDatabaseService(ILogger<SongDatabaseService> logger, string databasePath = "Songs.db")
     {
-        _db = new LiteDatabase(databasePath);
-        _songs = _db.GetCollection<SongRecord>("songs");
-        _songs.EnsureIndex(s => s.Md5, unique: true);
+        _logger = logger;
+        for (var i = 0; i < 5; ++i)
+        {
+            try
+            {
+                _logger.LogInformation("Loading songs from database {DatabasePath}", databasePath);
+                _db = new LiteDatabase(databasePath);
+                _songs = _db.GetCollection<SongRecord>("songs");
+                _songs.EnsureIndex(s => s.Md5, unique: true);
+                return;
+            }
+            catch (IOException e)
+            {
+                Thread.Sleep(500);
+            }
+        }
+        throw new IOException("Database not found, or occupied by another program");
     }
 
     public SongRecord? FindByMd5(string md5)
