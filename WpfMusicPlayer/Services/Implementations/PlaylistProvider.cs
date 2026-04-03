@@ -74,13 +74,13 @@ public class PlaylistProvider : IPlaylistProvider
         }
     }
 
-    public ErrorCode CreateDefault(string filePath)
+    public ErrorCode CreateDefault()
     {
         _playlist = new PlaylistRecord
         {
             FormatVersion = 1,
             Id = Guid.NewGuid().ToString(),
-            Name = "New Playlist",
+            Name = "播放列表",
             CreatedAt = DateTimeOffset.Now,
             PlaybackSettings = new PlaybackSettingsRecord
             {
@@ -90,8 +90,8 @@ public class PlaylistProvider : IPlaylistProvider
             },
             Cover = new CoverRecord { Type = CoverType.Local }
         };
-
-        return Save(filePath);
+        CurrentFilePath = string.Empty;
+        return ErrorCode.NoError;
     }
 
     public ref PlaylistRecord GetPlaylist()

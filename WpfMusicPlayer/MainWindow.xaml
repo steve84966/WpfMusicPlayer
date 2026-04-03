@@ -166,7 +166,8 @@
                                    ButtonOrientation="Horizontal"/>
             </Grid>
 
-            <views:PlaylistView x:Name="PlaylistContent" Grid.Row="0" Visibility="Collapsed">
+            <views:PlaylistView x:Name="PlaylistContent" Grid.Row="0" Visibility="Collapsed"
+                                DataContext="{Binding Playlist}">
                 <views:PlaylistView.RenderTransform>
                     <TranslateTransform/>
                 </views:PlaylistView.RenderTransform>
