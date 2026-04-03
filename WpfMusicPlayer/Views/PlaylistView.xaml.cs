@@ -37,7 +37,7 @@ public partial class PlaylistView : UserControl
 
         if (source is ListBoxItem { DataContext: PlaylistItemViewModel item })
         {
-            if (DataContext is MainViewModel vm)
+            if (DataContext is PlaylistViewModel vm)
                 vm.PlayFromPlaylist(item);
         }
     }
@@ -94,7 +94,7 @@ public partial class PlaylistView : UserControl
 
     private void CoverBorder_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
     {
-        if (DataContext is MainViewModel vm)
+        if (DataContext is PlaylistViewModel vm)
         {
             vm.ChangePlaylistCoverCommand.Execute(null);
         }

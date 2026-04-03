@@ -209,11 +209,9 @@ namespace WpfMusicPlayer
                 switch (result)
                 {
                     case WpfMessageBoxResult.Yes:
-                        e.Cancel = true;
-                        await ViewModel.SavePlaylistAsync();
+                        await ViewModel.Playlist.SavePlaylistAsync();
                         _closeConfirmed = true;
-                        Close();
-                        return;
+                        break;
                     case WpfMessageBoxResult.Cancel:
                         e.Cancel = true;
                         return;

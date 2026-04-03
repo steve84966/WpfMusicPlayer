@@ -20,7 +20,7 @@ public interface IPlaylistProvider
 
     ErrorCode Save(string filePath);
     
-    ErrorCode CreateDefault(string filePath);
+    ErrorCode CreateDefault();
 
     ref PlaylistRecord GetPlaylist();
 }

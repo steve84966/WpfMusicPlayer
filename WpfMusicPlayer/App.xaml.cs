@@ -46,6 +46,7 @@ public partial class App : Application
                     services.AddTransient<ICommandLineParser>(_ =>
                         new CommandLineParser(Environment.GetCommandLineArgs()));
 
+                    services.AddSingleton<PlaylistViewModel>();
                     services.AddSingleton<MainViewModel>();
 
                     services.AddSingleton<MainWindow>();

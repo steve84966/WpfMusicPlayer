@@ -28,7 +28,7 @@ internal static class RebootApplicationHelper
     {
         var parts = new List<string>();
 
-        var currentItem = vm.PlaylistItems.FirstOrDefault(p => p.IsPlaying);
+        var currentItem = vm.Playlist.PlaylistItems.FirstOrDefault(p => p.IsPlaying);
         if (currentItem is not null)
         {
             parts.Add("--file");
