@@ -338,6 +338,12 @@ LrcLanguageHelper::detect_language_type(const CString& input, float* probability
 
     if (zh > 0 && en > 0)
     {
+        // 当英文字母占比小于0.50时，直接判定为中文
+        float en_ratio = (float)en / (zh + en);
+        if (en_ratio < 0.50f) {
+            write_prob(_T("zh"), zh_score / length);
+            return LanguageType::zh;
+        }
         // 过滤非英文字符
         CString eng_str;
         for (int i = 0; i < input.GetLength(); ++i) {
