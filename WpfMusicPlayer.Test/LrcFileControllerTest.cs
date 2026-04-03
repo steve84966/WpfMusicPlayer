@@ -423,6 +423,18 @@ public sealed class LrcFileControllerTest
         Assert.AreEqual(0, CreateFromStream(lrc).GetLrcLineAuxIndex(0, LrcAuxiliaryInfo.Romanization));
         Assert.AreEqual(1, CreateFromStream(lrc).GetLrcLineAuxIndex(0, LrcAuxiliaryInfo.Lyric));
     }
+
+    [TestMethod]
+    public void ParseLrcStream_MalformedRomanjiContainsEnglish_Parsing()
+    {
+        const string lrc = """
+                           [00:42.468]sa ga su ta bi ni de ru ha a to no A 
+                           [00:42.468]探す旅に出るハートのA
+                           [00:42.468]踏上旅程的则是那张红心A
+                           """;
+        Assert.AreEqual(0, CreateFromStream(lrc).GetLrcLineAuxIndex(0, LrcAuxiliaryInfo.Romanization));
+        Assert.AreEqual(2, CreateFromStream(lrc).GetLrcLineAuxIndex(0, LrcAuxiliaryInfo.Translation));
+    }
     #endregion
 
     #region Error handling
