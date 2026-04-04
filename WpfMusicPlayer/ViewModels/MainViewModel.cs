@@ -44,6 +44,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private GCLatencyMode _previousLatencyMode;
     private bool _isRestoredFromCommandLine;
     private bool _disableAutoAdvance;
+    private bool _playCountIncrementedForCurrentSong;
     private bool _isDisposed;
     private readonly ILogger<MainViewModel> _logger;
 
@@ -299,6 +300,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 _currentFilePath = filePath;
                 _currentMd5 = ComputeFileMd5(filePath);
+                _playCountIncrementedForCurrentSong = false;
                 _logger.LogInformation("File MD5 computed: {Md5}", _currentMd5);
                 _musicPlayer.Dispose();
                 _musicPlayer = new MusicPlayer(_sampleRate);
@@ -625,11 +627,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void OnStart()
+    private void IncrementPlayCount()
     {
-        _logger.LogInformation("OnStart: playback started, switching to SustainedLowLatency GC mode");
-        _previousLatencyMode = GCSettings.LatencyMode;
-        GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
         if (_currentMd5 is not null)
         {
             _songDatabase.IncrementPlayCount(_currentMd5);
@@ -637,6 +636,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _syncContext.Post(_ =>
         {
             Playlist.IncrementItemPlayedCount(_currentFilePath);
+        }, null);
+    }
+
+    private void OnStart()
+    {
+        _logger.LogInformation("OnStart: playback started, switching to SustainedLowLatency GC mode");
+        _previousLatencyMode = GCSettings.LatencyMode;
+        GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
+        if (!_playCountIncrementedForCurrentSong)
+        {
+            _playCountIncrementedForCurrentSong = true;
+            IncrementPlayCount();
+        }
+        _syncContext.Post(_ =>
+        {
             PlayPauseContent = "\u23F8";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Playing);
             _enableAutoPlay = false;
@@ -681,6 +695,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (!_disableAutoAdvance && !_isDisposed)
                 AutoAdvance();
             _disableAutoAdvance = false;
+            // 自然停止，重新播放时视为增加一次播放次数
+            _playCountIncrementedForCurrentSong = false;
         }, null);
     }
 
