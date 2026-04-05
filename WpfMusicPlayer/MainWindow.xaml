@@ -163,6 +163,7 @@
                 </StackPanel>
 
                 <views:LyricsView x:Name="LandscapeLyricsView" Grid.Column="1" Margin="20,0,0,0"
+                                   DataContext="{Binding Lyrics}"
                                    ButtonOrientation="Horizontal"/>
             </Grid>
 
@@ -187,6 +188,7 @@
                 </Grid.RowDefinitions>
 
                 <views:LyricsView x:Name="PortraitLyricsView" Grid.Row="0"
+                                   DataContext="{Binding Lyrics}"
                                    ButtonOrientation="Vertical"/>
 
                 <Grid Grid.Row="1" Margin="0,15,0,0" HorizontalAlignment="Left">

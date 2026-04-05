@@ -1,5 +1,4 @@
 using MusicPlayerLibrary;
-using System.Collections.ObjectModel;
 using System.IO;
 using System.Runtime; 
 using System.Security.Cryptography;
@@ -33,11 +32,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private readonly SynchronizationContext _syncContext;
     private readonly Random _shuffleRandom = new();
     private readonly Stack<string> _shuffleHistory = new();
-    private readonly object _openFileLock = new();
+    private readonly Lock _openFileLock = new();
     private MusicPlayer _musicPlayer;
     private string? _currentFilePath;
     private string? _currentMd5;
-    private LrcFileController? _lrcFileController;
     private int _sampleRate;
     private bool _enableAutoPlay;
     private float? _pendingSeekTime;
@@ -55,6 +53,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ISongDatabaseService songDatabase,
         ICommandLineParser commandLineParser,
         PlaylistViewModel playlist,
+        LyricsViewModel lyrics,
         ILogger<MainViewModel> logger)
     {
         _configProvider = configProvider;
@@ -71,6 +70,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Playlist.IsMusicPlayingQuery = () => _musicPlayer!.IsPlaying();
         Playlist.PlaySongRequested += OnPlaylistSongRequested;
         Playlist.ResetPlaylistRequested += OnPlaylistResetRequested;
+        Playlist.RemovePlaylistItemRequested += OnRemovePlaylistItemRequested;
+        Lyrics = lyrics;
+        Lyrics.SeekRequested += OnLyricsSeekRequested;
+        Lyrics.UpdateCurrentLyricRequested += OnLyricsUpdateDatabaseRequested;
         CurrentBackgroundMode = configProvider.GetConfig().UI.Background;
         _sampleRate = 48000; // Studio quality
         _musicPlayer = new MusicPlayer(_sampleRate);
@@ -81,9 +84,18 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _logger.LogInformation("MainViewModel initialized, sample rate: {SampleRate}", _sampleRate);
     }
 
+    private void OnRemovePlaylistItemRequested(string filePath)
+    {
+        if (filePath == _currentFilePath)
+        {
+            OnPlaylistResetRequested();
+        }
+    }
+
     private void OnPlaylistSongRequested(string filePath, bool autoPlay)
     {
         _enableAutoPlay = autoPlay;
+        _playCountIncrementedForCurrentSong = false;
         try
         {
             Task.Run(() => OpenFile(filePath));
@@ -95,7 +107,44 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    private void OnPlaylistResetRequested()
+    private async void OnLyricsSeekRequested(float targetTimeSec)
+    {
+        if (!_musicPlayer.IsInitialized()) return;
+
+        var isPlaying = _musicPlayer.IsPlaying();
+        _logger.LogInformation("OnLyricsSeekRequested: targetTimeSec={TargetTime}s", targetTimeSec);
+
+        IsDraggingSlider = true;
+
+        await Task.Run(() =>
+        {
+            _musicPlayer.SeekToPosition(targetTimeSec, true);
+        });
+
+        if (isPlaying)
+        {
+            _musicPlayer.Start();
+        }
+
+        await Task.Delay(200);
+        IsDraggingSlider = false;
+        if (!isPlaying)
+        {
+            ProgressValue = targetTimeSec;
+            CurrentTime = FormatTime(targetTimeSec);
+        }
+        Lyrics.UpdateLyricProgress(targetTimeSec);
+    }
+
+    private void OnLyricsUpdateDatabaseRequested(string lyricContent)
+    {
+        var current = _songDatabase.FindByMd5(_currentMd5 ?? string.Empty);
+        current?.CustomLyric = lyricContent;
+        if (current is not null)
+            _songDatabase.Upsert(current);
+    }
+
+    private async void OnPlaylistResetRequested()
     {
         // reset state
         _musicPlayer.Dispose();
@@ -107,12 +156,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
         CurrentTime = "0:00";
         _smtcService.UpdatePlaybackStatus(PlaybackState.Stopped);
         _smtcService.UpdateTextMetadata("Unknown Title", "Unknown Artist");
-        _lrcFileController?.Dispose();
-        _lrcFileController = null;
-        Lyrics.Clear();
-        CurrentLyricIndex = -1;
-        HasTranslationAvailable = false;
-        HasRomanjiAvailable = false;
+        Lyrics.ResetState();
+
+        if (Playlist.PlaylistItems.Count <= 0) return;
+        _enableAutoPlay = false;
+        await Task.Run(() => OpenFile(Playlist.PlaylistItems[0].FilePath));
     }
 
     private void RestoreSettingsFromCommandLine()
@@ -127,8 +175,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             return;
         }
 
-        IsTranslationVisible = _commandLineParser.TranslationToggled;
-        IsRomanjiVisible = _commandLineParser.RomanjiToggled;
+        Lyrics.IsTranslationVisible = _commandLineParser.TranslationToggled;
+        Lyrics.IsRomanjiVisible = _commandLineParser.RomanjiToggled;
 
         if (_commandLineParser.AppliedEqualizerSettings.Length > 0)
         {
@@ -196,24 +244,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     public partial string PlayPauseContent { get; private set; } = "\u25B6";
 
-    public ObservableCollection<LyricLineViewModel> Lyrics { get; } = [];
-
-    [ObservableProperty]
-    public partial int CurrentLyricIndex { get; private set; } = -1;
-
     public bool IsDraggingSlider { get; set; }
-
-    [ObservableProperty]
-    public partial bool IsTranslationVisible { get; private set; } = true;
-
-    [ObservableProperty]
-    public partial bool HasTranslationAvailable { get; private set; }
-
-    [ObservableProperty]
-    public partial bool IsRomanjiVisible { get; private set; } = true;
-
-    [ObservableProperty]
-    public partial bool HasRomanjiAvailable { get; private set; }
 
     public bool IsFileDialogOpen { get; set; }
 
@@ -233,6 +264,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public partial float[] SpectrumData { get; private set; } = [];
 
     public PlaylistViewModel Playlist { get; }
+
+    public LyricsViewModel Lyrics { get; }
 
     [ObservableProperty]
     public partial ActiveView ActiveView { get; set; }
@@ -300,7 +333,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
             {
                 _currentFilePath = filePath;
                 _currentMd5 = ComputeFileMd5(filePath);
-                _playCountIncrementedForCurrentSong = false;
                 _logger.LogInformation("File MD5 computed: {Md5}", _currentMd5);
                 _musicPlayer.Dispose();
                 _musicPlayer = new MusicPlayer(_sampleRate);
@@ -346,37 +378,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ProgressValue = targetTime;
             CurrentTime = FormatTime(targetTime);
         }
-        UpdateLyricProgress(targetTime);
-    }
-
-    public async void SeekToLyric(LyricLineViewModel lyric)
-    {
-        if (!_musicPlayer.IsInitialized() || lyric.TimeMs < 0) return;
-
-        var targetTimeSec = lyric.TimeMs / 1000f;
-        var isPlaying = _musicPlayer.IsPlaying();
-        _logger.LogInformation("SeekToLyric: timeMs={TimeMs}, targetTimeSec={TargetTime}s", lyric.TimeMs, targetTimeSec);
-
-        IsDraggingSlider = true;
-
-        await Task.Run(() =>
-        {
-            _musicPlayer.SeekToPosition(targetTimeSec, true);
-        });
-
-        if (isPlaying)
-        {
-            _musicPlayer.Start();
-        }
-
-        await Task.Delay(200);
-        IsDraggingSlider = false;
-        if (!isPlaying)
-        {
-            ProgressValue = targetTimeSec;
-            CurrentTime = FormatTime(targetTimeSec);
-        }
-        UpdateLyricProgress(targetTimeSec);
+        Lyrics.UpdateLyricProgress(targetTime);
     }
 
     public void OnWindowClosed()
@@ -420,6 +422,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Settings.SettingChanged -= OnSettingChanged;
             Playlist.PlaySongRequested -= OnPlaylistSongRequested;
             Playlist.ResetPlaylistRequested += OnPlaylistResetRequested;
+            Lyrics.SeekRequested -= OnLyricsSeekRequested;
+            Lyrics.UpdateCurrentLyricRequested -= OnLyricsUpdateDatabaseRequested;
             GCSettings.LatencyMode = _previousLatencyMode;
             _musicPlayer.Dispose();
             _logger.LogInformation("MusicPlayer disposed");
@@ -511,8 +515,15 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _smtcService.UpdateTextMetadata(SongTitle, ArtistName);
 
             _musicPlayer.SetMasterVolume((float)Volume);
+            
+            // query custom lyric from database
+            var customLyric = cached?.CustomLyric ?? string.Empty;
+            if (String.IsNullOrEmpty(customLyric))
+            {
+                customLyric = _musicPlayer.GetID3Lyric();
+            }
 
-            LoadLyrics();
+            Lyrics.LoadLyrics(_currentFilePath, customLyric, _musicPlayer.GetSongTitle(), _musicPlayer.GetMusicTimeLength());
             if (_pendingSeekTime is { } seekTime)
             {
                 _logger.LogInformation("OnFileInit: applying pending seek to {SeekTime}s", seekTime);
@@ -520,7 +531,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 _musicPlayer.SeekToPosition(seekTime, true);
                 ProgressValue = seekTime;
                 CurrentTime = FormatTime(seekTime);
-                UpdateLyricProgress(seekTime);
+                Lyrics.UpdateLyricProgress(seekTime);
             }
             if (_enableAutoPlay)
                 _musicPlayer.Start();
@@ -599,32 +610,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             ProgressValue = time;
             CurrentTime = FormatTime(time);
-            UpdateLyricProgress(time);
+            Lyrics.UpdateLyricProgress(time);
         }, null);
-    }
-
-    private void UpdateLyricProgress(float time)
-    {
-        if (_lrcFileController == null) return;
-        _lrcFileController.SetTimeStamp((int)(time * 1000));
-        var newIndex = _lrcFileController.GetCurrentLrcNodeIndex();
-
-        if (newIndex != CurrentLyricIndex && newIndex >= 0 && newIndex < Lyrics.Count)
-        {
-            if (CurrentLyricIndex >= 0 && CurrentLyricIndex < Lyrics.Count)
-            {
-                Lyrics[CurrentLyricIndex].IsHighlighted = false;
-                Lyrics[CurrentLyricIndex].Progress = 0;
-            }
-            CurrentLyricIndex = newIndex;
-            Lyrics[CurrentLyricIndex].IsHighlighted = true;
-        }
-
-        if (CurrentLyricIndex >= 0 && CurrentLyricIndex < Lyrics.Count
-            && Lyrics[CurrentLyricIndex].IsProgressEnabled)
-        {
-            Lyrics[CurrentLyricIndex].Progress = _lrcFileController.GetLrcPercentage(CurrentLyricIndex);
-        }
     }
 
     private void IncrementPlayCount()
@@ -665,7 +652,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             PlayPauseContent = "\u25B6";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Paused);
-            UpdateLyricProgress((float)ProgressValue);
+            Lyrics.UpdateLyricProgress((float)ProgressValue);
         }, null);
     }
 
@@ -679,37 +666,14 @@ public partial class MainViewModel : ObservableObject, IDisposable
             ProgressValue = 0;
             CurrentTime = "0:00";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Stopped);
-            
-            if (CurrentLyricIndex >= 0 && CurrentLyricIndex < Lyrics.Count)
-            {
-                Lyrics[CurrentLyricIndex].IsHighlighted = false;
-                Lyrics[CurrentLyricIndex].Progress = 0;
-                CurrentLyricIndex = 0;
-                Lyrics[CurrentLyricIndex].IsHighlighted = true;
-                if (_lrcFileController != null && CurrentLyricIndex >= 0 && CurrentLyricIndex < Lyrics.Count
-                                           && Lyrics[CurrentLyricIndex].IsProgressEnabled)
-                {
-                    Lyrics[CurrentLyricIndex].Progress = _lrcFileController.GetLrcPercentage(CurrentLyricIndex);
-                }
-            }
+
+            Lyrics.OnPlaybackStopped();
             if (!_disableAutoAdvance && !_isDisposed)
                 AutoAdvance();
             _disableAutoAdvance = false;
             // 自然停止，重新播放时视为增加一次播放次数
             _playCountIncrementedForCurrentSong = false;
         }, null);
-    }
-
-    [RelayCommand]
-    private void ToggleTranslation()
-    {
-        IsTranslationVisible = !IsTranslationVisible;
-    }
-
-    [RelayCommand]
-    private void ToggleRomanji()
-    {
-        IsRomanjiVisible = !IsRomanjiVisible;
     }
 
     [RelayCommand]
@@ -753,6 +717,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 {
                     nextIndex = _shuffleRandom.Next(items.Count);
                 } while (nextIndex == currentIndex && items.Count > 1);
+                PlaySongByPath(items[nextIndex].FilePath);
             }
             return;
         }
@@ -970,12 +935,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             CurrentTime = "0:00";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Stopped);
             _smtcService.UpdateTextMetadata("Unknown Title", "Unknown Artist");
-            _lrcFileController?.Dispose();
-            _lrcFileController = null;
-            Lyrics.Clear();
-            CurrentLyricIndex = -1;
-            HasTranslationAvailable = false;
-            HasRomanjiAvailable = false;
+            Lyrics.ResetState();
         }
     }
 
@@ -983,176 +943,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public async Task SavePlaylistAsync()
     {
         await Playlist.SavePlaylistAsync();
-    }
-
-    private void LoadLyrics()
-    {
-        _logger.LogInformation("LoadLyrics: loading lyrics for {FilePath}", _currentFilePath);
-        // FFmpeg会自动转换ID3v2 tag到UTF-8
-        var lyricsStr = _musicPlayer.GetID3Lyric();
-        Lyrics.Clear();
-        CurrentLyricIndex = -1;
-        HasTranslationAvailable = false;
-        HasRomanjiAvailable = false;
-
-        if (!string.IsNullOrEmpty(lyricsStr))
-        {
-            try
-            {
-                _logger.LogInformation("LoadLyrics: found embedded ID3 lyrics");
-                ParseAndAddLocalLyric(lyricsStr);
-                return;
-            }
-            catch
-            {
-                // ignored
-                // fallback to lrc file read
-            }
-        }
-
-        // 文件的编码可能是乱来的，不可信
-        var lrcPath = FindBestLrcFile();
-        if (!string.IsNullOrEmpty(lrcPath))
-        {
-            _logger.LogInformation("LoadLyrics: found best match LRC file: {LrcPath}", lrcPath);
-            try
-            {
-                var content_bytes = File.ReadAllBytes(lrcPath);
-                var content = LocaleConverter.GetSystemStringFromBytes(content_bytes);
-                ParseAndAddLocalLyric(content);
-                return;
-            }
-            catch (Exception ex)
-            {
-                WpfMessageBox.Show($"Failed to load lrc: {ex.Message}", "Error", WpfMessageBoxIcon.Error);
-            }
-        }
-
-        // Fallback to same filename
-        var exactLrcPath = Path.ChangeExtension(_currentFilePath, ".lrc");
-        if (File.Exists(exactLrcPath))
-        {
-            _logger.LogInformation("LoadLyrics: fallback to exact LRC path: {LrcPath}", exactLrcPath);
-            try
-            {
-                var content_bytes = File.ReadAllBytes(exactLrcPath);
-                var content = LocaleConverter.GetSystemStringFromBytes(content_bytes);
-                ParseAndAddLocalLyric(content);
-                return;
-            }
-            catch (InvalidOperationException ex)
-            {
-                // ignored
-                WpfMessageBox.Show(ex.Message, "Error", WpfMessageBoxIcon.Error);
-            }
-        }
-
-        _lrcFileController = null;
-        _logger.LogInformation("LoadLyrics: no lyrics found");
-        Lyrics.Add(new LyricLineViewModel("暂无歌词"));
-    }
-
-    private void ParseAndAddLocalLyric(string content)
-    {
-        _lrcFileController?.Dispose();
-        _lrcFileController = new LrcFileController();
-
-        _lrcFileController.ParseLrcStream(content);
-        _lrcFileController.SetSongDuration(_musicPlayer.GetMusicTimeLength());
-        if (!_lrcFileController.Valid()) return;
-
-        var hasTranslation = _lrcFileController.IsAuxiliaryInfoEnabled(LrcAuxiliaryInfo.Translation);
-        HasTranslationAvailable = hasTranslation;
-        var hasRomanji = _lrcFileController.IsAuxiliaryInfoEnabled(LrcAuxiliaryInfo.Romanization);
-        HasRomanjiAvailable = hasRomanji;
-
-        for (var i = 0; i < _lrcFileController.GetLrcNodeCount(); ++i)
-        {
-            var lyricIndex = _lrcFileController.GetLrcLineAuxIndex(i, LrcAuxiliaryInfo.Lyric);
-            var timeMs = _lrcFileController.GetLrcNodeTimeMs(i);
-            var lyricText = _lrcFileController.GetLrcLineAt(i, lyricIndex);
-
-            string? translation = null;
-            string? romanji = null;
-            if (hasTranslation)
-            {
-                var transIndex = _lrcFileController.GetLrcLineAuxIndex(i, LrcAuxiliaryInfo.Translation);
-                if (transIndex >= 0)
-                    translation = _lrcFileController.GetLrcLineAt(i, transIndex);
-            }
-            if (hasRomanji)
-            {
-                var romanjiIndex = _lrcFileController.GetLrcLineAuxIndex(i, LrcAuxiliaryInfo.Romanization);
-                if (romanjiIndex >= 0)
-                    romanji = _lrcFileController.GetLrcLineAt(i, romanjiIndex);
-            }
-
-            Lyrics.Add(new LyricLineViewModel(lyricText, timeMs, translation, romanji)
-            {
-                IsProgressEnabled = _lrcFileController.IsPercentageEnabled(i)
-            });
-        }
-    }
-
-    private string? FindBestLrcFile()
-    {
-        if (string.IsNullOrEmpty(_currentFilePath)) return null;
-
-        var fileDir = Path.GetDirectoryName(_currentFilePath);
-        if (string.IsNullOrEmpty(fileDir)) return null;
-
-        var searchPaths = new List<string>
-        {
-            fileDir,
-            Path.GetFullPath(Path.Combine(fileDir, "..")),
-        };
-
-        AddKnownPath(Environment.SpecialFolder.MyMusic);
-        AddKnownPath(Environment.SpecialFolder.MyDocuments);
-
-        var targetName = _musicPlayer.GetSongTitle();
-        if (string.IsNullOrEmpty(targetName))
-        {
-            targetName = Path.GetFileNameWithoutExtension(_currentFilePath);
-        }
-
-        foreach (var dir in searchPaths.Where(Directory.Exists))
-        {
-            try
-            {
-                var lrcFiles = Directory.GetFiles(dir, "*.lrc");
-                string? bestFile = null;
-                var bestSimilarity = 0f;
-
-                foreach (var file in lrcFiles)
-                {
-                    var fileName = Path.GetFileNameWithoutExtension(file);
-
-                    if (fileName.Contains(targetName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return file;
-                    }
-
-                    var sim = CalculateJaccardSimilarity(fileName, targetName);
-                    if (!(sim > 0.7f) || !(sim > bestSimilarity)) continue;
-                    bestSimilarity = sim;
-                    bestFile = file;
-                }
-
-                if (bestFile != null) return bestFile;
-            }
-            catch { }
-        }
-
-        return null;
-
-        void AddKnownPath(Environment.SpecialFolder folder)
-        {
-            var path = Environment.GetFolderPath(folder);
-            if (string.IsNullOrEmpty(path)) return;
-            searchPaths.Add(path);
-            searchPaths.Add(Path.Combine(path, "Lyrics"));
-        }
     }
 
     [RelayCommand]
@@ -1167,21 +957,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
             || _currentMd5 == null) return;
         Playlist.AddSong(_currentFilePath, _currentMd5, SongTitle, ArtistName, AlbumCoverImage);
         Playlist.SetPlayingItem(_currentFilePath);
-    }
-
-    private static float CalculateJaccardSimilarity(string str1, string str2)
-    {
-        var set1 = new HashSet<char>(str1);
-        var set2 = new HashSet<char>(str2);
-
-        var intersection = new HashSet<char>(set1);
-        intersection.IntersectWith(set2);
-
-        var union = new HashSet<char>(set1);
-        union.UnionWith(set2);
-
-        if (union.Count == 0) return 0f;
-        return (float)intersection.Count / union.Count;
     }
 
     private static BitmapImage ConvertDrawingImageToWpfImage(System.Drawing.Image drawingImage)

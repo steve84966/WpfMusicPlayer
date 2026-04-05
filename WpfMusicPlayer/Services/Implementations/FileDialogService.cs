@@ -83,4 +83,18 @@ public class FileDialogService : IFileDialogService
         Windows.Storage.StorageFile file = await picker.PickSaveFileAsync();
         return file?.Path;
     }
+
+    public async Task<string?> PickLrcAsync()
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        picker.ViewMode = Windows.Storage.Pickers.PickerViewMode.List;
+        picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
+        picker.FileTypeFilter.Add(".lrc");
+
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow).Handle;
+        InitializeWithWindow.Initialize(picker, hwnd);
+
+        Windows.Storage.StorageFile file = await picker.PickSingleFileAsync();
+        return file?.Path;
+    }
 }

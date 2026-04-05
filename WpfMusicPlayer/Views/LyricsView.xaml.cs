@@ -36,7 +36,7 @@ public partial class LyricsView : UserControl
 
         if (source is ListBoxItem { DataContext: LyricLineViewModel lyric })
         {
-            if (DataContext is MainViewModel vm)
+            if (DataContext is LyricsViewModel vm)
                 vm.SeekToLyric(lyric);
         }
     }

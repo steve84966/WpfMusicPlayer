@@ -47,6 +47,7 @@ public partial class App : Application
                         new CommandLineParser(Environment.GetCommandLineArgs()));
 
                     services.AddSingleton<PlaylistViewModel>();
+                    services.AddSingleton<LyricsViewModel>();
                     services.AddSingleton<MainViewModel>();
 
                     services.AddSingleton<MainWindow>();

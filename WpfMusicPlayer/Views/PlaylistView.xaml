@@ -136,7 +136,8 @@
 
                 <Button Content="&#xE8F4;" FontFamily="Segoe MDL2 Assets"
                         Command="{Binding CreatePlaylistCommand}"
-                        FontSize="16" Foreground="White" Background="#444444" Padding="15,8" BorderThickness="0" Cursor="Hand" Margin="0,0,0,0">
+                        FontSize="16" Foreground="White" Background="#444444" Padding="15,8" BorderThickness="0" Cursor="Hand" Margin="0,0,0,0"
+                        ToolTip="新建播放列表">
                     <Button.Style>
                         <Style TargetType="Button">
                             <Setter Property="Template">
@@ -154,7 +155,8 @@
                 </Button>
                 <Button Content="&#xE838;" FontFamily="Segoe MDL2 Assets"
                         Command="{Binding OpenPlaylistCommand}"
-                        FontSize="16" Foreground="White" Background="#444444" Padding="15,8" BorderThickness="0" Cursor="Hand" Margin="15,0,0,0" >
+                        FontSize="16" Foreground="White" Background="#444444" Padding="15,8" BorderThickness="0" Cursor="Hand" Margin="15,0,0,0" 
+                    ToolTip="打开播放列表">
                     <Button.Style>
                         <Style TargetType="Button">
                             <Setter Property="Template">
@@ -172,7 +174,8 @@
                 </Button>
                 <Button Content="&#xEA35;" FontFamily="Segoe MDL2 Assets"
                         Command="{Binding SavePlaylistCommand}"
-                        FontSize="16" Foreground="White" Background="#444444" Padding="15,8" BorderThickness="0" Cursor="Hand" Margin="15,0,0,0">
+                        FontSize="16" Foreground="White" Background="#444444" Padding="15,8" BorderThickness="0" Cursor="Hand" Margin="15,0,0,0"
+                        ToolTip="保存播放列表">
                     <Button.Style>
                         <Style TargetType="Button">
                             <Setter Property="Template">

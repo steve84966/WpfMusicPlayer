@@ -7,7 +7,7 @@
              xmlns:helpers="clr-namespace:WpfMusicPlayer.Helpers"
              xmlns:local="clr-namespace:WpfMusicPlayer.Views"
              mc:Ignorable="d"
-             d:DataContext="{d:DesignInstance Type=vm:MainViewModel}">
+             d:DataContext="{d:DesignInstance Type=vm:LyricsViewModel}">
     <UserControl.Resources>
         <helpers:KaraokeClipConverter x:Key="KaraokeClipConverter"/>
 
@@ -72,7 +72,9 @@
         </Style>
 
         <DataTemplate x:Key="LyricItemTemplate" DataType="{x:Type vm:LyricLineViewModel}">
-            <StackPanel Margin="0,8">
+            <StackPanel Margin="0,8"
+                Tag="{Binding DataContext, 
+                      RelativeSource={RelativeSource AncestorType=local:LyricsView}}">
                 <Grid ClipToBounds="True">
                 <helpers:MarqueeContainer IsUnbounded="{Binding IsProgressEnabled}">
                 <Grid helpers:MarqueeBehavior.IsActive="{Binding IsHighlighted}"
@@ -288,6 +290,87 @@
                         </Style>
                     </TextBlock.Style>
                 </TextBlock>
+                <StackPanel.ContextMenu>
+                    <ContextMenu>
+                        <ContextMenu.Template>
+                            <ControlTemplate TargetType="ContextMenu">
+                                <Border Background="#2D2D2D" BorderBrush="#444444" BorderThickness="1"
+                                        CornerRadius="4" Padding="0,4">
+                                    <StackPanel IsItemsHost="True"/>
+                                </Border>
+                            </ControlTemplate>
+                        </ContextMenu.Template>
+                        <ContextMenu.Resources>
+                            <Style TargetType="MenuItem">
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="MenuItem">
+                                            <Border x:Name="Bd" Background="Transparent" Padding="10,6">
+                                                <StackPanel Orientation="Horizontal">
+                                                    <ContentPresenter ContentSource="Icon" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                    <ContentPresenter ContentSource="Header" VerticalAlignment="Center"
+                                                                      TextBlock.Foreground="{TemplateBinding Foreground}"/>
+                                                </StackPanel>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#3D3D3D"/>
+                                                </Trigger>
+                                                <Trigger Property="IsEnabled" Value="False">
+                                                    <Setter Property="Opacity" Value="0.5"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ContextMenu.Resources>
+                        <MenuItem Header="复制歌词" Command="{Binding CopyLyricTextCommand}">
+                            <MenuItem.Icon>
+                                <TextBlock Text="&#xE8C8;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="White"/>
+                            </MenuItem.Icon>
+                        </MenuItem>
+                        <MenuItem Header="复制翻译"
+                                  Command="{Binding CopyLyricTranslationCommand}">
+                            <MenuItem.Icon>
+                                <TextBlock Text="译" FontSize="12" Foreground="White"/>
+                            </MenuItem.Icon>
+                            <MenuItem.Style>
+                                <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasTranslation}" Value="False">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </MenuItem.Style>
+                        </MenuItem>
+                        <MenuItem Header="复制罗马音"
+                                  Command="{Binding CopyLyricRomanjiCommand}">
+                            <MenuItem.Icon>
+                                <TextBlock Text="あ" FontSize="12" Foreground="White"/>
+                            </MenuItem.Icon>
+                            <MenuItem.Style>
+                                <Style TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasRomanji}" Value="False">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </MenuItem.Style>
+                        </MenuItem>
+                        <Separator Background="#444444" Height="1" Margin="4,2"/>
+                        <MenuItem Header="加载自定义歌词"
+                                  Command="{Binding PlacementTarget.Tag.LoadCustomLyricsCommand,
+                                                    RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                            <MenuItem.Icon>
+                                <TextBlock Text="&#xE8E5;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="White"/>
+                            </MenuItem.Icon>
+                        </MenuItem>
+                    </ContextMenu>
+                </StackPanel.ContextMenu>
             </StackPanel>
         </DataTemplate>
     </UserControl.Resources>
@@ -299,6 +382,51 @@
             <ScrollViewer.RenderTransform>
                 <TranslateTransform x:Name="LyricsTranslateTransform"/>
             </ScrollViewer.RenderTransform>
+            <ScrollViewer.ContextMenu>
+                <ContextMenu>
+                    <ContextMenu.Template>
+                        <ControlTemplate TargetType="ContextMenu">
+                            <Border Background="#2D2D2D" BorderBrush="#444444" BorderThickness="1"
+                CornerRadius="4" Padding="0,4">
+                                <StackPanel IsItemsHost="True"/>
+                            </Border>
+                        </ControlTemplate>
+                    </ContextMenu.Template>
+                    <ContextMenu.Resources>
+                        <Style TargetType="MenuItem">
+                            <Setter Property="Foreground" Value="White"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="MenuItem">
+                                        <Border x:Name="Bd" Background="Transparent" Padding="10,6">
+                                            <StackPanel Orientation="Horizontal">
+                                                <ContentPresenter ContentSource="Icon" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                <ContentPresenter ContentSource="Header" VerticalAlignment="Center"
+                                              TextBlock.Foreground="{TemplateBinding Foreground}"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Bd" Property="Background" Value="#3D3D3D"/>
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Opacity" Value="0.5"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ContextMenu.Resources>
+                    <MenuItem Header="加载自定义歌词"
+                          Command="{Binding PlacementTarget.Tag.LoadCustomLyricsCommand,
+                            RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                        <MenuItem.Icon>
+                            <TextBlock Text="&#xE8E5;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="White"/>
+                        </MenuItem.Icon>
+                    </MenuItem>
+                </ContextMenu>
+            </ScrollViewer.ContextMenu>
             <ListBox x:Name="InternalLyricsList" ItemsSource="{Binding Lyrics}" Background="Transparent" BorderThickness="0"
                      HorizontalContentAlignment="Stretch"
                      HorizontalAlignment="Stretch" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
