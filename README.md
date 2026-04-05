@@ -40,13 +40,14 @@ A simple music player.
 - Windows System Media Transport Controls (SMTC) support
 - 10-band equalizer support
 - FFT Execution and spectrum analyzer support
+- Playing times record & display
+- Playlist support (.wppl format, in standard JSON)
 
 Still work in progress. 3rd party libraries are managed by vcpkg.
 
 ## TODO List:
-- [ ] Playlist support (UI)
 - [ ] UI Refractor (UI, from @Baicaiye)
-- [ ] Playing times record & display (UI, From @AAA大葱批发)
+- [ ] MusicPlayerLibrary, PcmProvider / PcmSubmitter / PcmObserver refractor
 - You can submit your ideas in issues, or contact me directly by email.
 
 Author info:
@@ -101,7 +102,7 @@ Any other form of use — including extraction, modification, reuse in other pro
 
 ## License
 - License under MIT license.
-- For 3rd party libraries, please refer to their respective licenses.
+- This project includes third-party components. Their licenses are listed in [LICENSE.thirdparty.txt](LICENSE.thirdparty.txt).
 
 
 ### FFmpeg licensing notice
