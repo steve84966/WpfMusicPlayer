@@ -50,7 +50,7 @@
                                     <Setter.Value>
                                         <ControlTemplate TargetType="Button">
                                             <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6">
-                                                <TextBlock Text="{Binding PlayModeContent}" FontSize="24" Foreground="{TemplateBinding Foreground}"
+                                                <TextBlock Text="{Binding PlayModeContent}" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="{TemplateBinding Foreground}"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                             </Border>
                                             <ControlTemplate.Triggers>
@@ -67,7 +67,8 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Command="{Binding PrevSongCommand}" Content="&#x23EE;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
+                    <Button Command="{Binding PrevSongCommand}"
+                            Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="Foreground" Value="White"/>
@@ -76,7 +77,7 @@
                                     <Setter.Value>
                                         <ControlTemplate TargetType="Button">
                                             <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6">
-                                                <TextBlock Text="&#x23EE;" FontSize="24" Foreground="{TemplateBinding Foreground}"
+                                                <TextBlock Text="&#xE892;" FontSize="24" FontFamily="Segoe MDL2 Assets" Foreground="{TemplateBinding Foreground}"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                             </Border>
                                             <ControlTemplate.Triggers>
@@ -102,7 +103,7 @@
                                     <Setter.Value>
                                         <ControlTemplate TargetType="Button">
                                             <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6">
-                                                <TextBlock Text="{TemplateBinding Content}" FontSize="{TemplateBinding FontSize}" Foreground="{TemplateBinding Foreground}"
+                                                <TextBlock Text="{TemplateBinding Content}" FontFamily="Segoe MDL2 Assets" FontSize="{TemplateBinding FontSize}" Foreground="{TemplateBinding Foreground}"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                             </Border>
                                             <ControlTemplate.Triggers>
@@ -122,7 +123,8 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Command="{Binding NextSongCommand}" Content="&#x23ED;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
+                    <Button Command="{Binding NextSongCommand}" 
+                            Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="Foreground" Value="White"/>
@@ -131,7 +133,7 @@
                                     <Setter.Value>
                                         <ControlTemplate TargetType="Button">
                                             <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6">
-                                                <TextBlock Text="&#x23ED;" FontSize="24" Foreground="{TemplateBinding Foreground}"
+                                                <TextBlock Text="&#xE893;" FontSize="24" FontFamily="Segoe MDL2 Assets" Foreground="{TemplateBinding Foreground}"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                             </Border>
                                             <ControlTemplate.Triggers>
@@ -148,7 +150,8 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Command="{Binding TogglePlaylistCommand}" Content="&#x23ED;" FontSize="24" Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
+                    <Button Command="{Binding TogglePlaylistCommand}" 
+                            Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="Foreground" Value="White"/>
@@ -157,7 +160,7 @@
                                     <Setter.Value>
                                         <ControlTemplate TargetType="Button">
                                             <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6">
-                                                <TextBlock Text="&#x1F4C3;" FontSize="24" Foreground="{TemplateBinding Foreground}"
+                                                <TextBlock Text="&#xE90B;" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="{TemplateBinding Foreground}"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                             </Border>
                                             <ControlTemplate.Triggers>
@@ -177,7 +180,7 @@
                 </StackPanel>
 
                 <StackPanel x:Name="InternalVolumePanel" Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <TextBlock Text="&#x1F50A;" FontSize="20" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBlock Text="&#xE767;" FontSize="20" FontFamily="Segoe MDL2 Assets" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
                     <Slider Width="100" Minimum="0" Maximum="1" SmallChange="0.01" LargeChange="0.1" TickFrequency="0.01" Value="{Binding Volume, Mode=TwoWay}" VerticalAlignment="Center"/>
                 </StackPanel>
             </Grid>

@@ -229,20 +229,31 @@ namespace WpfMusicPlayer
             ViewModel.Dispose();
         }
 
-        private void MainWindow_Drop(object sender, DragEventArgs e)
+        private async void MainWindow_Drop(object sender, DragEventArgs e)
         {
-            if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
-            var files = (string[]?)e.Data.GetData(DataFormats.FileDrop);
-            if (files?.Length > 0)
+            try
             {
+                if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
+                var files = (string[]?)e.Data.GetData(DataFormats.FileDrop);
+                if (!(files?.Length > 0)) return;
                 try
                 {
+                    if (files[0].EndsWith(".wppl", StringComparison.OrdinalIgnoreCase))
+                    {
+                        await ViewModel.OpenExternalPlaylist(files[0]);
+                        return;
+                    }
+
                     ViewModel.OpenFile(files[0]);
                 }
                 catch (Exception ex)
                 {
                     WpfMessageBox.Show($"{ex.Message}\n{files[0]}", "Error", WpfMessageBoxIcon.Error);
                 }
+            }
+            catch (Exception)
+            {
+                //  ignored
             }
         }
 

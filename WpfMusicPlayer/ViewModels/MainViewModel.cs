@@ -45,6 +45,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private bool _playCountIncrementedForCurrentSong;
     private bool _isDisposed;
     private readonly ILogger<MainViewModel> _logger;
+    private const string PauseString = "\uE769";
+    private const string PlayString = "\uF5B0";
+
 
     public MainViewModel(
         IConfigProvider configProvider,
@@ -242,7 +245,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     } = 0.5;
 
     [ObservableProperty]
-    public partial string PlayPauseContent { get; private set; } = "\u25B6";
+    public partial string PlayPauseContent { get; private set; } = PlayString;
 
     public bool IsDraggingSlider { get; set; }
 
@@ -288,11 +291,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public string PlayModeContent => CurrentPlayMode switch
     {
-        PlayMode.Sequential => "\u27A1",
-        PlayMode.ListLoop => "\U0001F501",
-        PlayMode.SingleLoop => "\U0001F502",
-        PlayMode.Shuffle => "\U0001F500",
-        _ => "\u27A1"
+        PlayMode.Sequential => "\uF5E7",
+        PlayMode.ListLoop => "\uE8EE",
+        PlayMode.SingleLoop => "\uE8ED",
+        PlayMode.Shuffle => "\uE8B1",
+        _ => "\uF5E7"
     };
 
     public string PlayModeTooltip => CurrentPlayMode switch
@@ -340,7 +343,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 _musicPlayer.OpenFile(filePath);
                 if (!_enableAutoPlay)
                 {
-                    _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
+                    _syncContext.Post(_ => PlayPauseContent = PlayString, null);
                 }
             }
             catch
@@ -506,6 +509,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
                         Title = SongTitle,
                         Artist = ArtistName
                     });
+                    
+                    Playlist.UpdateItemMetadata(_currentFilePath, SongTitle, ArtistName, null);
                 }
             }
 
@@ -566,6 +571,19 @@ public partial class MainViewModel : ObservableObject, IDisposable
                             using var artStream = new MemoryStream();
                             image.Save(artStream, System.Drawing.Imaging.ImageFormat.Png);
                             cached.AlbumArt = artStream.ToArray();
+
+                            using var ms = new MemoryStream();
+                            image.Save(ms, System.Drawing.Imaging.ImageFormat.Png); 
+                            ms.Seek(0, SeekOrigin.Begin);
+
+                            BitmapImage bitmapImage = new BitmapImage();
+                            bitmapImage.BeginInit();
+                            bitmapImage.CacheOption = BitmapCacheOption.OnLoad;
+                            bitmapImage.StreamSource = ms;
+                            bitmapImage.EndInit();
+                            bitmapImage.Freeze();
+
+                            Playlist.UpdateItemMetadata(_currentFilePath, null, null, bitmapImage);
                         }
                         else
                         {
@@ -576,9 +594,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
                     }
                 }
 
-                var playlistItem = Playlist.PlaylistItems.FirstOrDefault(p => p.FilePath == _currentFilePath);
-                if (playlistItem is not null)
-                    playlistItem.AlbumCover = AlbumCoverImage;
 
                 Stream? stream = null;
                 if (AlbumCoverImage is not null && cached?.AlbumArt is { Length: > 0 })
@@ -638,7 +653,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
         _syncContext.Post(_ =>
         {
-            PlayPauseContent = "\u23F8";
+            PlayPauseContent = PauseString;
             _smtcService.UpdatePlaybackStatus(PlaybackState.Playing);
             _enableAutoPlay = false;
         }, null);
@@ -650,7 +665,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         GCSettings.LatencyMode = _previousLatencyMode;
         _syncContext.Post(_ =>
         {
-            PlayPauseContent = "\u25B6";
+            PlayPauseContent = PlayString;
             _smtcService.UpdatePlaybackStatus(PlaybackState.Paused);
             Lyrics.UpdateLyricProgress((float)ProgressValue);
         }, null);
@@ -662,7 +677,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         GCSettings.LatencyMode = _previousLatencyMode;
         _syncContext.Post(_ =>
         {
-            PlayPauseContent = "\u25B6";
+            PlayPauseContent = PlayString;
             ProgressValue = 0;
             CurrentTime = "0:00";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Stopped);
@@ -883,7 +898,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         if (!_musicPlayer.IsInitialized())
         {
             _logger.LogInformation("PlayPause: player not initialized, ignoring");
-            _syncContext.Post(_ => PlayPauseContent = "\u25B6", null);
+            _syncContext.Post(_ => PlayPauseContent = PlayString, null);
             return;
         }
 
@@ -905,7 +920,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task OpenAsync()
     {
-        if (IsFileDialogOpen == true) { return; }
+        if (IsFileDialogOpen) { return; }
         IsFileDialogOpen = true;
         _logger.LogInformation("OpenAsync: opening file dialog");
         var path = await _fileDialogService.PickMusicFileAsync();
@@ -998,5 +1013,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
     {
         var timeSpan = TimeSpan.FromSeconds(seconds);
         return $"{(int)timeSpan.TotalMinutes}:{timeSpan.Seconds:D2}";
+    }
+
+    public async Task OpenExternalPlaylist(string playlistPath)
+    {
+        await Playlist.OpenPlaylistAsync(playlistPath);
     }
 }

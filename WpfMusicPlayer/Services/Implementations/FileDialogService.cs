@@ -15,7 +15,7 @@ public class FileDialogService : IFileDialogService
         picker.FileTypeFilter.Add(".flac");
         picker.FileTypeFilter.Add(".ncm");
 
-        var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow).Handle;
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow ?? throw new InvalidOperationException()).Handle;
         InitializeWithWindow.Initialize(picker, hwnd);
 
         Windows.Storage.StorageFile file = await picker.PickSingleFileAsync();
@@ -31,7 +31,7 @@ public class FileDialogService : IFileDialogService
         picker.FileTypeFilter.Add(".flac");
         picker.FileTypeFilter.Add(".ncm");
 
-        var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow).Handle;
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow ?? throw new InvalidOperationException()).Handle;
         InitializeWithWindow.Initialize(picker, hwnd);
 
         var files = await picker.PickMultipleFilesAsync();
@@ -49,35 +49,35 @@ public class FileDialogService : IFileDialogService
         picker.FileTypeFilter.Add(".bmp");
         picker.FileTypeFilter.Add(".webp");
 
-        var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow).Handle;
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow ?? throw new InvalidOperationException()).Handle;
         InitializeWithWindow.Initialize(picker, hwnd);
 
         Windows.Storage.StorageFile file = await picker.PickSingleFileAsync();
         return file?.Path;
     }
 
-    public async Task<string?> PickJsonAsync()
+    public async Task<string?> PickWpplAsync()
     {
         var picker = new Windows.Storage.Pickers.FileOpenPicker();
         picker.ViewMode = Windows.Storage.Pickers.PickerViewMode.List;
         picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
-        picker.FileTypeFilter.Add(".json");
+        picker.FileTypeFilter.Add(".wppl");
 
-        var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow).Handle;
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow ?? throw new InvalidOperationException()).Handle;
         InitializeWithWindow.Initialize(picker, hwnd);
 
         Windows.Storage.StorageFile file = await picker.PickSingleFileAsync();
         return file?.Path;
     }
 
-    public async Task<string?> SaveJsonAsync()
+    public async Task<string?> SaveWpplAsync(string suggestedFileName = "playlist")
     {
         var picker = new Windows.Storage.Pickers.FileSavePicker();
         picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
-        picker.FileTypeChoices.Add("JSON 文件", new List<string> { ".json" });
-        picker.SuggestedFileName = "playlist";
+        picker.FileTypeChoices.Add("WpfMusicPlayer 播放列表", new List<string> { ".wppl" });
+        picker.SuggestedFileName = suggestedFileName;
 
-        var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow).Handle;
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow ?? throw new InvalidOperationException()).Handle;
         InitializeWithWindow.Initialize(picker, hwnd);
 
         Windows.Storage.StorageFile file = await picker.PickSaveFileAsync();
@@ -91,7 +91,7 @@ public class FileDialogService : IFileDialogService
         picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
         picker.FileTypeFilter.Add(".lrc");
 
-        var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow).Handle;
+        var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow ?? throw new InvalidOperationException()).Handle;
         InitializeWithWindow.Initialize(picker, hwnd);
 
         Windows.Storage.StorageFile file = await picker.PickSingleFileAsync();

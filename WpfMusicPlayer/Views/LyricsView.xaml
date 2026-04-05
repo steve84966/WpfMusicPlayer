@@ -328,7 +328,7 @@
                         </ContextMenu.Resources>
                         <MenuItem Header="复制歌词" Command="{Binding CopyLyricTextCommand}">
                             <MenuItem.Icon>
-                                <TextBlock Text="&#xE8C8;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="White"/>
+                                <TextBlock Text="&#xF0E3;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="White"/>
                             </MenuItem.Icon>
                         </MenuItem>
                         <MenuItem Header="复制翻译"
@@ -419,8 +419,7 @@
                         </Style>
                     </ContextMenu.Resources>
                     <MenuItem Header="加载自定义歌词"
-                          Command="{Binding PlacementTarget.Tag.LoadCustomLyricsCommand,
-                            RelativeSource={RelativeSource AncestorType=ContextMenu}}">
+                          Command="{Binding LoadCustomLyricsCommand}">
                         <MenuItem.Icon>
                             <TextBlock Text="&#xE8E5;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="White"/>
                         </MenuItem.Icon>

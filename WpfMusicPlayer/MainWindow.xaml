@@ -288,7 +288,7 @@
                         </ListBoxItem>
                         <ListBoxItem>
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE8FD;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                                <TextBlock Text="&#xE90B;" FontFamily="Segoe MDL2 Assets" FontSize="16"
                                            VerticalAlignment="Center" Margin="0,0,14,0" Foreground="White"/>
                                 <TextBlock Text="播放列表" VerticalAlignment="Center" Foreground="White"/>
                             </StackPanel>
