@@ -50,7 +50,7 @@ public partial class PlaylistViewModel(
     public Func<bool>? IsMusicPlayingQuery { get; set; }
 
     [RelayCommand]
-    private async Task OpenPlaylistAsync()
+    public async Task OpenPlaylistAsync(string? filePath = null)
     {
         logger.LogInformation("OpenPlaylistAsync: opening playlist");
         if (HasUnsavedPlaylistChanges)
@@ -72,10 +72,14 @@ public partial class PlaylistViewModel(
         }
         if (_isFileDialogOpen) return;
         _isFileDialogOpen = true;
-        var path = await fileDialogService.PickJsonAsync();
+        string path;
+        if (string.IsNullOrEmpty(filePath))
+            path = await fileDialogService.PickWpplAsync() ?? string.Empty;
+        else 
+            path = filePath;
         _isFileDialogOpen = false;
 
-        if (path == null) return;
+        if (string.IsNullOrEmpty(path)) return;
         try
         {
             logger.LogInformation("OpenPlaylistAsync: loading playlist from {Path}", path);
@@ -146,7 +150,7 @@ public partial class PlaylistViewModel(
         {
             if (_isFileDialogOpen) return;
             _isFileDialogOpen = true;
-            path = await fileDialogService.SaveJsonAsync();
+            path = await fileDialogService.SaveWpplAsync(PlaylistTitle);
             _isFileDialogOpen = false;
             if (path == null) return;
         }
@@ -163,7 +167,21 @@ public partial class PlaylistViewModel(
             playlist.FormatVersion = 3;
             playlist.CreatedAt = DateTimeOffset.Now;
             playlist.Name = PlaylistTitle;
-            playlist.Contents.Clear();
+            if (PlaylistCoverImage is not null)
+            {
+                playlist.Cover.Type = CoverType.Base64;
+                var encoder = new JpegBitmapEncoder
+                {
+                    QualityLevel = 75
+                };
+
+                encoder.Frames.Add(BitmapFrame.Create(PlaylistCoverImage));
+
+                using var ms = new MemoryStream();
+                encoder.Save(ms);
+                playlist.Cover.Data = ms.ToArray();
+                playlist.Contents.Clear();
+            }
 
             foreach (var item in PlaylistItems)
             {
@@ -309,6 +327,17 @@ public partial class PlaylistViewModel(
         _isPlaylistDirty = false;
     }
 
+    [RelayCommand]
+    public void SetAlbumArtFromPlaylistItem(PlaylistItemViewModel? item)
+    {
+        if (item?.AlbumCover is not null)
+        {
+            var albumCover = item.AlbumCover;
+            PlaylistCoverImage = albumCover;
+            _isPlaylistUserOpened = true;
+            _isPlaylistDirty = true;
+        }
+    }
     public void PlayFromPlaylist(PlaylistItemViewModel item)
     {
         logger.LogInformation("PlayFromPlaylist: user selected {Title} ({FilePath})", item.Title, item.FilePath);
@@ -337,10 +366,15 @@ public partial class PlaylistViewModel(
             item.IsPlaying = item.FilePath == filePath;
     }
 
-    public void UpdateItemAlbumCover(string? filePath, BitmapImage? cover)
+    public void UpdateItemMetadata(string? filePath, string? title, string? artist, BitmapImage? cover)
     {
         var item = PlaylistItems.FirstOrDefault(p => p.FilePath == filePath);
-        item?.AlbumCover = cover;
+        if (cover is not null)
+            item?.AlbumCover = cover;
+        if (title is not null) 
+            item?.Title = title;
+        if (artist is not null)
+            item?.Artist = artist;
     }
 
     public void IncrementItemPlayedCount(string? filePath)
