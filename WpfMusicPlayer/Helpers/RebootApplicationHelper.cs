@@ -51,12 +51,12 @@ internal static class RebootApplicationHelper
         //     parts.Add("--playlist");
         //     parts.Add(Quote(vm.OpenedPlaylistPath));
         // }
-        if (vm.IsTranslationVisible)
+        if (vm.Lyrics.IsTranslationVisible)
         {
             parts.Add("--translation");
             parts.Add("true");
         }
-        if (vm.IsRomanjiVisible)
+        if (vm.Lyrics.IsRomanjiVisible)
         {
             parts.Add("--romanji");
             parts.Add("true");

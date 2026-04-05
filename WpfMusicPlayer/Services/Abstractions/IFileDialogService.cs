@@ -7,4 +7,5 @@ public interface IFileDialogService
     Task<string?> PickJsonAsync();
     Task<string?> SaveJsonAsync();
     Task<string?> PickImageAsync();
+    Task<string?> PickLrcAsync();
 }

@@ -1,4 +1,6 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+﻿using System.Windows;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 
 namespace WpfMusicPlayer.ViewModels;
 
@@ -23,5 +25,25 @@ public partial class LyricLineViewModel(string text, int timeMs = -1, string? tr
 
     [ObservableProperty]
     public partial double Progress { get; set; }
+
+    [RelayCommand]
+    public void CopyLyricText()
+    {
+        Clipboard.SetText(Text);
+    }
+
+    [RelayCommand]
+    public void CopyLyricTranslation()
+    {
+        if (Translation != null)
+            Clipboard.SetText(Translation);
+    }
+
+    [RelayCommand]
+    public void CopyLyricRomanji()
+    {
+        if (Romanji != null)
+            Clipboard.SetText(Romanji);
+    }
 }
 

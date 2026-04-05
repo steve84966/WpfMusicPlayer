@@ -25,6 +25,7 @@ public partial class PlaylistViewModel(
 
     public event Action<string, bool>? PlaySongRequested;
     public event Action? ResetPlaylistRequested;
+    public event Action<string>? RemovePlaylistItemRequested;
 
     public ObservableCollection<PlaylistItemViewModel> PlaylistItems { get; } = [];
 
@@ -232,6 +233,7 @@ public partial class PlaylistViewModel(
         PlaylistItems.Remove(item);
         _isPlaylistUserOpened = true;
         _isPlaylistDirty = true;
+        RemovePlaylistItemRequested?.Invoke(item.FilePath);
     }
 
     [RelayCommand]

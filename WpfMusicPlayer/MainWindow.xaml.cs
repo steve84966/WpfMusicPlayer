@@ -5,7 +5,6 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
-using MusicPlayerLibrary;
 using WpfMusicPlayer.Helpers;
 using WpfMusicPlayer.Services.Abstractions;
 using WpfMusicPlayer.ViewModels;
@@ -45,6 +44,7 @@ namespace WpfMusicPlayer
                 OnSourceInitialized(s, e);
             };
             ViewModel.PropertyChanged += ViewModel_PropertyChanged;
+            ViewModel.Lyrics.PropertyChanged += LyricsPropertyChanged;
 
             _spectrumTimer = new DispatcherTimer(DispatcherPriority.Render)
             {
@@ -137,23 +137,25 @@ namespace WpfMusicPlayer
                 var oldView = _previousView;
                 _previousView = ViewModel.ActiveView;
                 AnimateViewTransition(oldView, ViewModel.ActiveView, gen);
-                return;
             }
+        }
 
-            var index = ViewModel.CurrentLyricIndex;
+        private void LyricsPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            var index = ViewModel.Lyrics.CurrentLyricIndex;
             if (index < 0) return;
-            if (e.PropertyName is nameof(MainViewModel.IsTranslationVisible)
-                                 or nameof(MainViewModel.IsRomanjiVisible))
+            if (e.PropertyName is nameof(LyricsViewModel.IsTranslationVisible)
+                                 or nameof(LyricsViewModel.IsRomanjiVisible))
             {
                 Dispatcher.BeginInvoke(delegate
                 {
-                    if (ViewModel.CurrentLyricIndex < 0) return;
+                    if (ViewModel.Lyrics.CurrentLyricIndex < 0) return;
                     ScrollLyricToCenter(_isPortrait ? PortraitLyricsView.LyricsList : LandscapeLyricsView.LyricsList, index);
                 }, DispatcherPriority.Loaded);
                 return;
             }
 
-            if (e.PropertyName != nameof(MainViewModel.CurrentLyricIndex)) return;
+            if (e.PropertyName != nameof(LyricsViewModel.CurrentLyricIndex)) return;
 
             ScrollLyricToCenter(LandscapeLyricsView.LyricsList, index);
             ScrollLyricToCenter(PortraitLyricsView.LyricsList, index);
@@ -220,6 +222,7 @@ namespace WpfMusicPlayer
 
             _spectrumTimer.Stop();
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
+            ViewModel.Lyrics.PropertyChanged -= LyricsPropertyChanged;
             _decodingDialog?.Close();
             _decodingDialog = null;
             ViewModel.OnWindowClosed();
@@ -422,7 +425,7 @@ namespace WpfMusicPlayer
                 {
                     ScrollLyricToCenter(
                         _isPortrait ? PortraitLyricsView.LyricsList : LandscapeLyricsView.LyricsList,
-                        ViewModel.CurrentLyricIndex);
+                        ViewModel.Lyrics.CurrentLyricIndex);
                 }, DispatcherPriority.Loaded);
             };
             incoming.BeginAnimation(OpacityProperty, fadeIn);
@@ -551,7 +554,7 @@ namespace WpfMusicPlayer
             {
                 ScrollLyricToCenter(
                     _isPortrait ? PortraitLyricsView.LyricsList : LandscapeLyricsView.LyricsList,
-                    ViewModel.CurrentLyricIndex);
+                    ViewModel.Lyrics.CurrentLyricIndex);
             }, DispatcherPriority.Loaded);
         }
 
