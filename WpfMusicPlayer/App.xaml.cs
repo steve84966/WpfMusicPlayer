@@ -7,6 +7,7 @@ using WpfMusicPlayer.Helpers;
 using WpfMusicPlayer.Services.Abstractions;
 using WpfMusicPlayer.Services.Implementations;
 using WpfMusicPlayer.ViewModels;
+using WpfMusicPlayer.Views;
 using Serilog;
 
 namespace WpfMusicPlayer;
@@ -48,6 +49,7 @@ public partial class App : Application
 
                     services.AddSingleton<PlaylistViewModel>();
                     services.AddSingleton<LyricsViewModel>();
+                    services.AddSingleton<DesktopLyricViewModel>();
                     services.AddSingleton<MainViewModel>();
 
                     services.AddSingleton<MainWindow>();

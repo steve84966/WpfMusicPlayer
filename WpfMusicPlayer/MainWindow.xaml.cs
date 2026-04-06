@@ -27,6 +27,7 @@ namespace WpfMusicPlayer
         private bool _backgroundInitialized;
         private DecodingDialog? _decodingDialog;
         private readonly DispatcherTimer _spectrumTimer;
+        private DesktopLyricWindow? _desktopLyricWindow;
 
         public MainWindow(MainViewModel viewModel, ISmtcService smtcService)
         {
@@ -45,6 +46,7 @@ namespace WpfMusicPlayer
             };
             ViewModel.PropertyChanged += ViewModel_PropertyChanged;
             ViewModel.Lyrics.PropertyChanged += LyricsPropertyChanged;
+            ViewModel.DesktopLyric.PropertyChanged += DesktopLyricPropertyChanged;
 
             _spectrumTimer = new DispatcherTimer(DispatcherPriority.Render)
             {
@@ -161,6 +163,24 @@ namespace WpfMusicPlayer
             ScrollLyricToCenter(PortraitLyricsView.LyricsList, index);
         }
 
+        
+        private void DesktopLyricPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(DesktopLyricViewModel.IsDesktopLyricVisible)) return;
+
+            if (ViewModel.DesktopLyric.IsDesktopLyricVisible)
+            {
+                _desktopLyricWindow ??= new DesktopLyricWindow(ViewModel.DesktopLyric);
+                _desktopLyricWindow.Show();
+            }
+            else
+            {
+                if (_desktopLyricWindow is { IsLocked: true })
+                    _desktopLyricWindow.Unlock();
+                _desktopLyricWindow?.Hide();
+            }
+        }
+
         private static void ScrollLyricToCenter(ListBox listBox, int index)
         {
             if (index < 0 || index >= listBox.Items.Count) return;
@@ -223,6 +243,8 @@ namespace WpfMusicPlayer
             _spectrumTimer.Stop();
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
             ViewModel.Lyrics.PropertyChanged -= LyricsPropertyChanged;
+            ViewModel.DesktopLyric.PropertyChanged -= DesktopLyricPropertyChanged;
+            _desktopLyricWindow?.Close();
             _decodingDialog?.Close();
             _decodingDialog = null;
             ViewModel.OnWindowClosed();

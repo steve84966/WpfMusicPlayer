@@ -120,7 +120,11 @@ CSimpleArray<CString> SplitLrcForProgressMultiNode2(const CSimpleArray<CString>&
 }
 
 static const std::initializer_list<CString> chinese_aux_lyric_start = {
-    _T("作词:"), _T("作词："), _T("作曲:"), _T("作曲："), _T("词:"), _T("词："), _T("曲:"), _T("曲：")
+    _T("作词:"), _T("作词："), 
+    _T("作曲:"), _T("作曲："), 
+    _T("词:"), _T("词："),
+    _T("曲:"), _T("曲："), 
+    _T("编曲:"), _T("编曲：")
 };
 
 LrcMultiNode::LrcMultiNode(int t, const CSimpleArray<CString>& texts) :
@@ -694,7 +698,7 @@ void LrcFileControllerNative::parse_lrc_file_stream(CFile* file_stream)
                 auto multiples = 3 - milliseconds_str.GetLength();
                 milliseconds *= std::floor(pow(10, multiples));
             }
-            int total_ms_multi = minutes * 60000 + seconds * 1000 + milliseconds + lrc_offset_ms;
+            int total_ms_multi = minutes * 60000 + seconds * 1000 + milliseconds;
             if (total_ms_multi < 0) total_ms_multi = 0;
             time_stamps.push_back(total_ms_multi);
             lyric_text = lyric_text.Mid(time_tag_end_index_multi + 1).Trim();
@@ -751,6 +755,7 @@ void LrcFileControllerNative::clear_lrc_nodes()
 
 void LrcFileControllerNative::set_time_stamp(int time_stamp_ms_in)
 {
+    time_stamp_ms_in -= lrc_offset_ms;
     if (time_stamp_ms_in < time_stamp_ms)
     {
         // reverse query, set index to zero
@@ -770,7 +775,7 @@ void LrcFileControllerNative::set_time_stamp(int time_stamp_ms_in)
     {
         cur_lrc_node_index = lrc_nodes.GetCount() - 1;
     }
-    time_stamp_ms = time_stamp_ms_in;
+    time_stamp_ms = time_stamp_ms_in + lrc_offset_ms;
 }
 
 void LrcFileControllerNative::time_stamp_increase(int ms)
@@ -970,6 +975,12 @@ void LrcFileController::SetSongDuration(float durationSec)
 {
     check_if_null();
     native_handle->set_song_duration(durationSec);
+}
+
+void LrcFileController::SetLrcOffsetExt(int offsetMs)
+{
+    check_if_null();
+    native_handle->set_lrc_offset_ext(offsetMs);
 }
 
 bool LrcFileController::Valid()

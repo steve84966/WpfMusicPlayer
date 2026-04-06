@@ -57,6 +57,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ICommandLineParser commandLineParser,
         PlaylistViewModel playlist,
         LyricsViewModel lyrics,
+        DesktopLyricViewModel desktopLyric,
         ILogger<MainViewModel> logger)
     {
         _configProvider = configProvider;
@@ -77,6 +78,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Lyrics = lyrics;
         Lyrics.SeekRequested += OnLyricsSeekRequested;
         Lyrics.UpdateCurrentLyricRequested += OnLyricsUpdateDatabaseRequested;
+        DesktopLyric = desktopLyric;
         CurrentBackgroundMode = configProvider.GetConfig().UI.Background;
         _sampleRate = 48000; // Studio quality
         _musicPlayer = new MusicPlayer(_sampleRate);
@@ -275,6 +277,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public SettingsViewModel Settings { get; }
 
+    public DesktopLyricViewModel DesktopLyric { get; }
+
     [ObservableProperty]
     public partial UISettings.BackgroundMode CurrentBackgroundMode { get; private set; }
 
@@ -424,7 +428,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _logger.LogInformation("MainViewModel disposing, releasing resources");
             Settings.SettingChanged -= OnSettingChanged;
             Playlist.PlaySongRequested -= OnPlaylistSongRequested;
-            Playlist.ResetPlaylistRequested += OnPlaylistResetRequested;
+            Playlist.ResetPlaylistRequested -= OnPlaylistResetRequested;
             Lyrics.SeekRequested -= OnLyricsSeekRequested;
             Lyrics.UpdateCurrentLyricRequested -= OnLyricsUpdateDatabaseRequested;
             GCSettings.LatencyMode = _previousLatencyMode;
@@ -964,6 +968,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void TogglePlaylist()
     {
         ActiveView = ActiveView == ActiveView.Playlist ? ActiveView.Player : ActiveView.Playlist;
+    }
+
+    [RelayCommand]
+    private void ToggleDesktopLyric()
+    {
+        DesktopLyric.IsDesktopLyricVisible = !DesktopLyric.IsDesktopLyricVisible;
     }
 
     private void AddToPlaylist()

@@ -295,7 +295,7 @@
                         </ListBoxItem>
                         <ListBoxItem>
                             <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="&#xE9E9;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                                <TextBlock Text="&#xF4C3;" FontFamily="Segoe MDL2 Assets" FontSize="16"
                                            VerticalAlignment="Center" Margin="0,0,14,0" Foreground="White"/>
                                 <TextBlock Text="均衡器" VerticalAlignment="Center" Foreground="White"/>
                             </StackPanel>

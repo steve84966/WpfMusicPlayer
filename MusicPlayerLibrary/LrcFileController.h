@@ -250,12 +250,13 @@ public:
 	void set_time_stamp(int time_stamp_ms_in);
 	void time_stamp_increase(int ms);
 	void set_song_duration(float duration_sec) { song_duration_sec = duration_sec; }
+	void set_lrc_offset_ext(int offset_ms) { lrc_offset_ms = offset_ms; }
 	[[nodiscard]] bool valid() const;
 	[[nodiscard]] int get_current_time_stamp() const { return time_stamp_ms; }
 	[[nodiscard]] int get_current_lrc_lines_count() const;
 	[[nodiscard]] int get_current_lrc_node_index() const { return static_cast<int>(cur_lrc_node_index); }
-	[[nodiscard]] int get_lrc_node_count() const { return static_cast<int>(lrc_nodes.GetCount()); }
-	[[nodiscard]] int get_lrc_node_time_ms(int index) const { assert(index < lrc_nodes.GetCount());  return lrc_nodes[index]->get_time_ms(); }
+	[[nodiscard]] int get_lrc_node_count() const { return static_cast<int>(lrc_nodes.GetCount()); }           
+	[[nodiscard]] int get_lrc_node_time_ms(int index) const { assert(index < lrc_nodes.GetCount());  return lrc_nodes[index]->get_time_ms() + lrc_offset_ms; }
 	int get_current_lrc_line_at(int index, CString& out_str) const;
 	int get_lrc_line_at(int lrc_node_index, int index, CString& out_str) const;
 	[[nodiscard]] int get_current_lrc_line_aux_index(LrcAuxiliaryInfoNative info) const;
@@ -276,7 +277,7 @@ public:
 	}
 	void reset_auxiliary_info_enabled() { aux_enable_info = 0; }
 	bool is_percentage_enabled(int index) { return lrc_nodes[index]->is_lrc_percentage_enabled(); }
-	float get_lrc_percentage(int index) { return lrc_nodes[index]->get_lrc_percentage(time_stamp_ms / 1000.0f); }
+	float get_lrc_percentage(int index) { return lrc_nodes[index]->get_lrc_percentage((time_stamp_ms - lrc_offset_ms) / 1000.0f); }
 
 	// static helpers
 	static LrcMetadataTypeNative get_metadata_type(const CString& str);
@@ -313,6 +314,7 @@ public:
 	void SetTimeStamp(int timeStampMs);
 	void TimeStampIncrease(int ms);
 	void SetSongDuration(float durationSec);
+	void SetLrcOffsetExt(int offsetMs);
 
 	bool Valid();
 	int GetCurrentTimeStamp();
