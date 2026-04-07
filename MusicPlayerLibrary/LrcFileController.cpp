@@ -215,7 +215,8 @@ LrcMultiNode::LrcMultiNode(int t, const CSimpleArray<CString>& texts) :
     if (eng_index != -1)
     {
         float eng_prob, romaji_prob;
-        const bool has_jp_or_kr_lyric = jp_index != -1 || kr_index != -1;
+        // 更改为has_cjk_lyric 处理汉语拼音和粤拼
+        const bool has_cjk_lyric = jp_index != -1 || kr_index != -1 || zh_index != -1;
         const bool has_zh_only_pair = jp_index == -1 && kr_index == -1 && zh_index != -1;
         const bool is_strong_separated_romaji = has_zh_only_pair && IsStrongSeparatedRomaji(texts[eng_index]);
         LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index], &eng_prob, &romaji_prob);
@@ -223,14 +224,16 @@ LrcMultiNode::LrcMultiNode(int t, const CSimpleArray<CString>& texts) :
         {
             aux_infos[eng_index] = LrcAuxiliaryInfoNative::Lyric;
         }
-        else if (eng_prob < romaji_prob && (has_jp_or_kr_lyric || is_strong_separated_romaji))
+        else if (eng_prob < romaji_prob && (has_cjk_lyric || is_strong_separated_romaji))
         {
 //            ATLTRACE(_T("info: romanization hit, line %s\n"), texts[eng_index].GetString());
             aux_infos[eng_index] = LrcAuxiliaryInfoNative::Romanization;
-            if (is_strong_separated_romaji)
+            if (is_strong_separated_romaji ||
+                (jp_index == -1 && kr_index == -1 && zh_index != -1))
             {
                 // 坑：英语实际为罗马音，中文应为歌词正文而非翻译
                 // 注意此处要检查是否为强分隔罗马音，避免长得像英语的被一棒子打死
+                // 只有中文的情况下，汉拼和粤拼作为罗马音存在，将中文行纠正为歌词
                 aux_infos[zh_index] = LrcAuxiliaryInfoNative::Lyric;
             }
         }
@@ -238,6 +241,33 @@ LrcMultiNode::LrcMultiNode(int t, const CSimpleArray<CString>& texts) :
         {
             ATLTRACE(_T("warn: unknown romaji, ignoring eng line: %s\n"), texts[eng_index].GetString());
             aux_infos[eng_index] = LrcAuxiliaryInfoNative::Ignored;
+        }
+        int eng_index_2;
+        for (eng_index_2 = eng_index + 1; eng_index_2 < str_count; ++eng_index_2) 
+        {
+            if (lang_types[eng_index_2] == LrcLanguageHelper::LanguageType::en) 
+            {
+                break;
+            }
+        }
+        if (eng_index_2 < str_count &&
+            zh_index == -1 && jp_index == -1 && kr_index == -1) 
+        {
+            float eng_prob, romaji_prob;
+            LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index], &eng_prob, &romaji_prob);
+            float eng_prob_2, romaji_prob_2;
+            LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index_2], &eng_prob_2, &romaji_prob_2);
+            if (romaji_prob_2 > romaji_prob) 
+            {
+                // eng_index是被流放的歌词
+                aux_infos[eng_index] = LrcAuxiliaryInfoNative::Lyric;
+                aux_infos[eng_index_2] = LrcAuxiliaryInfoNative::Romanization;
+            }
+            else
+            {
+                aux_infos[eng_index_2] = LrcAuxiliaryInfoNative::Lyric;
+                aux_infos[eng_index] = LrcAuxiliaryInfoNative::Romanization;
+            }
         }
     }
 }
@@ -258,6 +288,17 @@ void LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(const CString& input, floa
         // 常见英语辅音组合
         "th", "sh", "ph", "bl", "cl", "str", "spr", "pr", "tr", "dr"
     };
+    
+    if (detect_is_chinese_pinyin(input))
+    {
+        *eng_prob = 0.0f; *jpn_romaji_prob = 1.0f;
+        return;
+    }
+    if (detect_is_jyutping(input))
+    {
+        *eng_prob = 0.0f; *jpn_romaji_prob = 1.0f;
+        return;
+    }
 
     int romaji_score = 0;
     int english_score = 0;
@@ -398,6 +439,100 @@ LrcLanguageHelper::detect_language_type(const CString& input, float* probability
         return LanguageType::kr;
     }
     return LanguageType::others;
+}
+
+CStringA match_from_list(const CStringA& s, int pos,
+                         const std::initializer_list<CStringA>& list) {
+    CStringA best, input = s;
+    for (auto& tk : list) {
+        int len = tk.GetLength();
+        if (pos + len <= input.GetLength() &&
+            strncmp(input.Mid(pos, len), tk, len) == 0) 
+        {
+            if (len > best.GetLength()) best = tk;
+        }
+    }
+    return best;
+}
+
+bool LrcLanguageHelper::detect_is_chinese_pinyin(const CString& input)
+{
+    const auto s = static_cast<CStringA>(CT2A(input));
+    static const std::initializer_list<CStringA> pinyin_shengmu_tokens = {
+        "b", "p", "m", "f",
+        "d", "t", "n", "l",
+        "g", "k", "h",
+        "j", "q", "x",
+        "zh", "ch", "sh", "r",
+        "z", "c", "s",
+        "y", "w"
+    };
+    static const std::initializer_list<CStringA> pinyin_yunmu_tokens = {
+        "a", "o", "e", "ai", "ei", "ao", "ou",
+        "an", "en", "ang", "eng", "er",
+        "i" ,"ia", "ie", "iao", "iu", "ian", "in", "iang", "ing", "iong",
+        "u", "ua", "uo", "uai", "ui", "uan", "un", "uang", "ong",
+        "ü", "üe", "üan", "ün", "v", "ve", "van", "vn" // ü->v 键盘输入兼容
+    };
+    int i = 0;
+    while (i < s.GetLength()) {
+        // 声母（最长匹配，可以没有）
+        CStringA initial = match_from_list(s, i, pinyin_shengmu_tokens);
+        if (!initial.IsEmpty()) i += initial.GetLength();
+
+        // 韵母（必须包含）
+        CStringA final = match_from_list(s, i, pinyin_yunmu_tokens);
+        if (final.IsEmpty()) return false;
+        i += final.GetLength();
+
+        for (; i < s.GetLength(); ++i) {
+            unsigned char c = s[i];
+            if (isalpha(c)) break;
+        }
+    }
+    return true;
+}
+
+bool LrcLanguageHelper::detect_is_jyutping(const CString& input)
+{
+    const auto s = static_cast<CStringA>(CT2A(input));
+    static const std::initializer_list<CStringA> jyutping_initials = { // 粤拼声母
+        "ng", "gw", "kw",
+        "b", "p", "m", "f", "d", "t", "n", "l", "g", "k", "h",
+        "z", "c", "s", "w", "j"
+    };
+    static const std::initializer_list<CStringA> jyutping_finals = { // 粤拼韵母
+        "aa", "a", "e", "i", "o", "u", "yu",
+        "oe", "eo", "eu",
+        "ui", "iu", "ou", "au",
+        "ai", "ei", "oi",
+        "am", "an", "ang", "em", "en", "eng",
+        "im", "in", "ing", "om", "on", "ong",
+        "um", "un", "ung"
+    };
+    int i = 0;
+    while (i < s.GetLength()) {
+        // 声母（最长匹配，可以没有）
+        CStringA initial = match_from_list(s, i, jyutping_initials);
+        if (!initial.IsEmpty()) i += initial.GetLength();
+
+        // 韵母（必须包含）
+        CStringA final = match_from_list(s, i, jyutping_finals);
+        if (final.IsEmpty()) return false;
+        i += final.GetLength();
+
+        // 入声尾（可选）
+        if (i < s.GetLength()) {
+            char c = s[i];
+            if (c == 'p' || c == 't' || c == 'k') i++;
+        }
+        
+        for (; i < s.GetLength(); ++i) {
+            unsigned char c = s[i];
+            if (isalpha(c)) break;
+        }
+    }
+    return true;
 }
 
 LrcProgressNode::LrcProgressNode(int t, const CString& text_with_node)

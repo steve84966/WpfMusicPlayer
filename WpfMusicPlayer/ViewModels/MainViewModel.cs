@@ -39,7 +39,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private int _sampleRate;
     private bool _enableAutoPlay;
     private float? _pendingSeekTime;
-    private GCLatencyMode _previousLatencyMode;
+    private readonly GCLatencyMode _previousLatencyMode;
     private bool _isRestoredFromCommandLine;
     private bool _disableAutoAdvance;
     private bool _playCountIncrementedForCurrentSong;
@@ -66,6 +66,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _songDatabase = songDatabase;
         _commandLineParser = commandLineParser;
         _logger = logger;
+        _previousLatencyMode = GCSettings.LatencyMode;
         _syncContext = SynchronizationContext.Current!;
         Equalizer = new EqualizerViewModel(ApplyEqualizerBand);
         Settings = new SettingsViewModel(configProvider);
@@ -78,6 +79,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Lyrics = lyrics;
         Lyrics.SeekRequested += OnLyricsSeekRequested;
         Lyrics.UpdateCurrentLyricRequested += OnLyricsUpdateDatabaseRequested;
+        Lyrics.UpdateCurrentLyricOffsetRequested += OnLyricsUpdateOffsetMsRequired;
         DesktopLyric = desktopLyric;
         CurrentBackgroundMode = configProvider.GetConfig().UI.Background;
         _sampleRate = 48000; // Studio quality
@@ -141,10 +143,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Lyrics.UpdateLyricProgress(targetTimeSec);
     }
 
-    private void OnLyricsUpdateDatabaseRequested(string lyricContent)
+    private void OnLyricsUpdateDatabaseRequested(string lyricContent, int offsetMs)
     {
         var current = _songDatabase.FindByMd5(_currentMd5 ?? string.Empty);
         current?.CustomLyric = lyricContent;
+        current?.CustomLyricOffsetMs = offsetMs;
+        _logger.LogInformation("OnLyricsUpdateDatabaseRequired: offsetMs={offsetMs}", offsetMs);
+        if (current is not null)
+            _songDatabase.Upsert(current);
+    }
+
+    private void OnLyricsUpdateOffsetMsRequired(int offsetMs)
+    {
+        var current = _songDatabase.FindByMd5(_currentMd5 ?? string.Empty);
+        current?.CustomLyricOffsetMs = offsetMs;
+        _logger.LogInformation("OnLyricsUpdateOffsetMsRequired: offsetMs={OffsetMs}", offsetMs);
         if (current is not null)
             _songDatabase.Upsert(current);
     }
@@ -437,6 +450,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             Playlist.ResetPlaylistRequested -= OnPlaylistResetRequested;
             Lyrics.SeekRequested -= OnLyricsSeekRequested;
             Lyrics.UpdateCurrentLyricRequested -= OnLyricsUpdateDatabaseRequested;
+            Lyrics.UpdateCurrentLyricOffsetRequested -= OnLyricsUpdateOffsetMsRequired;
             GCSettings.LatencyMode = _previousLatencyMode;
             _musicPlayer.Dispose();
             _logger.LogInformation("MusicPlayer disposed");
@@ -538,7 +552,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 customLyric = _musicPlayer.GetID3Lyric();
             }
 
-            Lyrics.LoadLyrics(_currentFilePath, customLyric, _musicPlayer.GetSongTitle(), _musicPlayer.GetMusicTimeLength());
+            var offsetMs = cached?.CustomLyricOffsetMs ?? 0;
+            _logger.LogInformation("OnFileInit: custom lyric offset: {OffsetMs}ms", offsetMs);
+            Lyrics.LoadLyrics(_currentFilePath, customLyric, _musicPlayer.GetSongTitle(), _musicPlayer.GetMusicTimeLength(), offsetMs);
             if (_pendingSeekTime is { } seekTime)
             {
                 _logger.LogInformation("OnFileInit: applying pending seek to {SeekTime}s", seekTime);
@@ -654,7 +670,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void OnStart()
     {
         _logger.LogInformation("OnStart: playback started, switching to SustainedLowLatency GC mode");
-        _previousLatencyMode = GCSettings.LatencyMode;
         GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
         if (!_playCountIncrementedForCurrentSong)
         {

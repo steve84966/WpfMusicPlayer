@@ -9,7 +9,8 @@
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
-        ShowInTaskbar="False">
+        ShowInTaskbar="False"
+        PreviewKeyDown="OffsetAdjustDialog_OnPreviewKeyDown">
 
     <Window.Resources>
         <Style x:Key="DialogButtonStyle" TargetType="Button">
@@ -100,8 +101,7 @@
                                      Padding="0,6"
                                      CaretBrush="White"
                                      SelectionBrush="#400078D7"
-                                     LostFocus="ValueTextBox_LostFocus"
-                                     KeyDown="ValueTextBox_KeyDown"/>
+                                     LostFocus="ValueTextBox_LostFocus"/>
                         </Grid>
                     </Border>
 
@@ -113,10 +113,10 @@
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,12,0,0">
                     <TextBlock Text="快速调整(ms)" FontSize="14" Foreground="#88FFFFFF" Margin="0,0,12,0" VerticalAlignment="Center"/>
-                    <Button Content="-500" Style="{StaticResource StepButtonStyle}" Tag="-500"/>
-                    <Button Content="-100" Style="{StaticResource StepButtonStyle}" Tag="-100"/>
-                    <Button Content="+100" Style="{StaticResource StepButtonStyle}" Tag="100"/>
-                    <Button Content="+500" Style="{StaticResource StepButtonStyle}" Tag="500"/>
+                    <Button Click="QuickStep_Click" Content="-500" Style="{StaticResource StepButtonStyle}" Tag="-500"/>
+                    <Button Click="QuickStep_Click" Content="-100" Style="{StaticResource StepButtonStyle}" Tag="-100"/>
+                    <Button Click="QuickStep_Click" Content="+100" Style="{StaticResource StepButtonStyle}" Tag="100"/>
+                    <Button Click="QuickStep_Click" Content="+500" Style="{StaticResource StepButtonStyle}" Tag="500"/>
                 </StackPanel>
 
             </StackPanel>

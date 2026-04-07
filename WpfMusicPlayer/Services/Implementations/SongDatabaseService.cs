@@ -10,7 +10,7 @@ public class SongDatabaseService : ISongDatabaseService
 {
     private readonly LiteDatabase _db;
     private readonly ILiteCollection<SongRecord> _songs;
-    private readonly  ILogger<SongDatabaseService> _logger;
+    private readonly ILogger<SongDatabaseService> _logger;
 
     public SongDatabaseService(ILogger<SongDatabaseService> logger, string databasePath = "Songs.db")
     {

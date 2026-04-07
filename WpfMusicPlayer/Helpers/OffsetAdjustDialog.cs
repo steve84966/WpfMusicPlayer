@@ -20,7 +20,7 @@ public partial class OffsetAdjustDialog
         InitializeComponent();
     }
 
-    // 延迟调节，支持实时响应对话框内改变的盐池值
+    // 延迟调节，支持实时响应对话框内改变的延迟值
     // 传入onChanged事件即可
     public static int Show(int initialValue = 0, string title = "调整延迟",
         Action<int>? onChanged = null, int minValue = -10000, int maxValue = 10000)
@@ -94,14 +94,12 @@ public partial class OffsetAdjustDialog
 
     private void QuickStep_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is System.Windows.Controls.Button btn &&
-            int.TryParse(btn.Tag?.ToString(), out int delta))
-        {
-            ApplyTextBoxValue();
-            _value = Math.Clamp(_value + delta, _minValue, _maxValue);
-            RefreshDisplay();
-            NotifyChanged();
-        }
+        if (sender is not System.Windows.Controls.Button btn ||
+            !int.TryParse(btn.Tag?.ToString(), out int delta)) return;
+        ApplyTextBoxValue();
+        _value = Math.Clamp(_value + delta, _minValue, _maxValue);
+        RefreshDisplay();
+        NotifyChanged();
     }
 
     private void ResetButton_Click(object sender, RoutedEventArgs e)
@@ -125,7 +123,7 @@ public partial class OffsetAdjustDialog
         NotifyChanged();
     }
 
-    private void ValueTextBox_KeyDown(object sender, KeyEventArgs e)
+    private void OffsetAdjustDialog_OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
         switch (e.Key)
         {
@@ -142,9 +140,11 @@ public partial class OffsetAdjustDialog
                 e.Handled = true;
                 break;
             case Key.Enter:
-                ApplyTextBoxValue();
-                NotifyChanged();
                 e.Handled = true;
+                ApplyTextBoxValue();
+                Result = _value;
+                DialogResult = true;
+                Close();
                 break;
         }
     }
