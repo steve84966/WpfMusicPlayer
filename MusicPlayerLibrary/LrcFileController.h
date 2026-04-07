@@ -278,6 +278,7 @@ public:
 	void reset_auxiliary_info_enabled() { aux_enable_info = 0; }
 	bool is_percentage_enabled(int index) { return lrc_nodes[index]->is_lrc_percentage_enabled(); }
 	float get_lrc_percentage(int index) { return lrc_nodes[index]->get_lrc_percentage((time_stamp_ms - lrc_offset_ms) / 1000.0f); }
+	int get_lrc_offset() { return lrc_offset_ms; }
 
 	// static helpers
 	static LrcMetadataTypeNative get_metadata_type(const CString& str);
@@ -314,6 +315,7 @@ public:
 	void SetTimeStamp(int timeStampMs);
 	void TimeStampIncrease(int ms);
 	void SetSongDuration(float durationSec);
+	int GetLrcOffset();
 	void SetLrcOffsetExt(int offsetMs);
 
 	bool Valid();

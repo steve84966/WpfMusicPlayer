@@ -290,7 +290,15 @@ public partial class LyricsViewModel(ILogger<LyricsViewModel> logger, IFileDialo
             WpfMessageBox.Show(ex.Message, "Error", WpfMessageBoxIcon.Error);
         }
     }
-    
+
+    [RelayCommand]
+    public void AdjustLrcOffset()
+    {
+        if (_lrcFileController is null) return;
+        OffsetAdjustDialog.Show(_lrcFileController.GetLrcOffset(), 
+            title: "调整歌词延迟",
+            onChanged: offset => _lrcFileController.SetLrcOffsetExt(offset));
+    }
 
     private static float CalculateJaccardSimilarity(string str1, string str2)
     {

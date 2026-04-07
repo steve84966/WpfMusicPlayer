@@ -23,6 +23,7 @@ public partial class DesktopLyricViewModel
                 case nameof(LyricsViewModel.CurrentLyricIndex):
                     OnPropertyChanged(nameof(CurrentLyric));
                     OnPropertyChanged(nameof(TranslationVisibility));
+                    OnPropertyChanged(nameof(RomanjiVisibility));
                     break;
                 case nameof(LyricsViewModel.IsTranslationVisible):
                     OnPropertyChanged(nameof(TranslationVisibility));
@@ -42,14 +43,14 @@ public partial class DesktopLyricViewModel
         };
     }
 
-    public LyricLineViewModel? CurrentLyric
+    public LyricLineViewModel CurrentLyric
     {
         get
         {
             var idx = _lyricsVm.CurrentLyricIndex;
             if (idx >= 0 && idx < _lyricsVm.Lyrics.Count)
                 return _lyricsVm.Lyrics[idx];
-            return null;
+            return new LyricLineViewModel("暂无歌词");
         }
     }
 
@@ -88,12 +89,12 @@ public partial class DesktopLyricViewModel
     private void ToggleRomanji() => IsRomanjiOn = !IsRomanjiOn;
 
     public Visibility TranslationVisibility =>
-        CurrentLyric?.HasTranslation == true && IsTranslationOn
+        CurrentLyric.HasTranslation && IsTranslationOn
             ? Visibility.Visible
             : Visibility.Collapsed;
 
     public Visibility RomanjiVisibility =>
-        CurrentLyric?.HasRomanji == true && IsRomanjiOn
+        CurrentLyric.HasRomanji && IsRomanjiOn
             ? Visibility.Visible
             : Visibility.Collapsed;
 

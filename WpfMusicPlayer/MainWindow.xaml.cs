@@ -48,6 +48,13 @@ namespace WpfMusicPlayer
             ViewModel.Lyrics.PropertyChanged += LyricsPropertyChanged;
             ViewModel.DesktopLyric.PropertyChanged += DesktopLyricPropertyChanged;
 
+            // 从命令行恢复时，IsDesktopLyricVisible可能已经设置
+            if (ViewModel.DesktopLyric.IsDesktopLyricVisible)
+            {
+                _desktopLyricWindow ??= new DesktopLyricWindow(ViewModel.DesktopLyric);
+                _desktopLyricWindow.Show();
+            }
+
             _spectrumTimer = new DispatcherTimer(DispatcherPriority.Render)
             {
                 Interval = TimeSpan.FromMilliseconds(16)
@@ -258,15 +265,23 @@ namespace WpfMusicPlayer
                 if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
                 var files = (string[]?)e.Data.GetData(DataFormats.FileDrop);
                 if (!(files?.Length > 0)) return;
+                // 在UI线程上缓存ViewModel引用
+                var vm = ViewModel;
                 try
                 {
                     if (files[0].EndsWith(".wppl", StringComparison.OrdinalIgnoreCase))
                     {
-                        await ViewModel.OpenExternalPlaylist(files[0]);
+                        await vm.OpenExternalPlaylist(files[0]);
                         return;
                     }
 
-                    ViewModel.OpenFile(files[0]);
+                    var validFiles = files
+                        .Where(f => vm.ExtensionList.Any(ext => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                        .ToArray();
+                    if (validFiles.Length > 0)
+                        // 巨坑：不能直接在后台线程访问DataContext！！！
+                        // 直接OpenFile会导致阻塞UI线程
+                        await Task.Run(() => vm.OpenFile(validFiles[0]));
                 }
                 catch (Exception ex)
                 {

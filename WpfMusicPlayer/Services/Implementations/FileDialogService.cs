@@ -6,14 +6,18 @@ namespace WpfMusicPlayer.Services.Implementations;
 
 public class FileDialogService : IFileDialogService
 {
+    public List<string> ExtensionList => [
+        ".mp3", ".flac", ".wav", ".wma", ".m4a", ".aac", ".ogg", ".ape", ".ncm"
+    ]; 
     public async Task<string?> PickMusicFileAsync()
     {
         var picker = new Windows.Storage.Pickers.FileOpenPicker();
         picker.ViewMode = Windows.Storage.Pickers.PickerViewMode.Thumbnail;
         picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.MusicLibrary;
-        picker.FileTypeFilter.Add(".mp3");
-        picker.FileTypeFilter.Add(".flac");
-        picker.FileTypeFilter.Add(".ncm");
+        foreach (var ext in ExtensionList)
+        {
+            picker.FileTypeFilter.Add(ext);
+        }
 
         var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow ?? throw new InvalidOperationException()).Handle;
         InitializeWithWindow.Initialize(picker, hwnd);
@@ -27,9 +31,10 @@ public class FileDialogService : IFileDialogService
         var picker = new Windows.Storage.Pickers.FileOpenPicker();
         picker.ViewMode = Windows.Storage.Pickers.PickerViewMode.Thumbnail;
         picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.MusicLibrary;
-        picker.FileTypeFilter.Add(".mp3");
-        picker.FileTypeFilter.Add(".flac");
-        picker.FileTypeFilter.Add(".ncm");
+        foreach (var ext in ExtensionList)
+        {
+            picker.FileTypeFilter.Add(ext);
+        }
 
         var hwnd = new System.Windows.Interop.WindowInteropHelper(Application.Current.MainWindow ?? throw new InvalidOperationException()).Handle;
         InitializeWithWindow.Initialize(picker, hwnd);

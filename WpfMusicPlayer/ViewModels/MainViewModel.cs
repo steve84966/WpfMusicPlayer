@@ -201,6 +201,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _isRestoredFromCommandLine = true;
         }
 
+        DesktopLyric.IsDesktopLyricVisible = _commandLineParser.IsDesktopLyricToggled;
+        CurrentPlayMode = _commandLineParser.CurrentPlayMode;
+
         _logger.LogInformation("Restoring file from command line: {FilePath}, autoPlay: {AutoPlay}, seekTime: {SeekTime}",
             _commandLineParser.FilePath, _enableAutoPlay, _pendingSeekTime);
         OpenFile(_commandLineParser.FilePath);
@@ -295,7 +298,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public string PlayModeContent => CurrentPlayMode switch
     {
-        PlayMode.Sequential => "\uF5E7",
+        PlayMode.Sequential => "\uE8FD",
         PlayMode.ListLoop => "\uE8EE",
         PlayMode.SingleLoop => "\uE8ED",
         PlayMode.Shuffle => "\uE8B1",
@@ -310,6 +313,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         PlayMode.Shuffle => "随机播放",
         _ => "顺序播放"
     };
+
+    public List<string> ExtensionList =>
+        _fileDialogService.ExtensionList;
 
     // for RebootApplication to build command line args
     public bool IsMusicPlaying => _musicPlayer.IsPlaying();

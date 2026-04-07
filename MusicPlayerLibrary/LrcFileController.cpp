@@ -977,6 +977,12 @@ void LrcFileController::SetSongDuration(float durationSec)
     native_handle->set_song_duration(durationSec);
 }
 
+int LrcFileController::GetLrcOffset()
+{
+    check_if_null();
+    return native_handle->get_lrc_offset();
+}
+
 void LrcFileController::SetLrcOffsetExt(int offsetMs)
 {
     check_if_null();

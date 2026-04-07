@@ -22,6 +22,10 @@ public interface ICommandLineParser
     public bool TranslationToggled { get; }
 
     public bool RomanjiToggled { get; }
+    
+    public PlayMode CurrentPlayMode { get; }
+    
+    public bool IsDesktopLyricToggled { get; }
 
     public int[] AppliedEqualizerSettings { get; }
 }

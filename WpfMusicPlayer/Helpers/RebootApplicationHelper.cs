@@ -61,6 +61,10 @@ internal static class RebootApplicationHelper
             parts.Add("--romanji");
             parts.Add("true");
         }
+        parts.Add("--playmode");
+        parts.Add(vm.CurrentPlayMode.ToString());
+        parts.Add("--desktoplyric");
+        parts.Add(vm.DesktopLyric.IsDesktopLyricVisible.ToString());
         // 注意: Microsoft.Extensions.Configuration.Logging以子键方式索引数组
         // 例如: --eq:0 1 --eq:1 3 --eq:2 5
         var bands = vm.Equalizer.Bands;
