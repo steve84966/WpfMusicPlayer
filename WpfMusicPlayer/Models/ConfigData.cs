@@ -6,7 +6,7 @@ namespace WpfMusicPlayer.Models
     public class ConfigData
     {
         [XmlElement("audio-settings")]
-        public AudioSettings Audio { get; set; } = new AudioSettings();
+        public AudioSettings Audio { get; set; } = new();
 
         public class AudioSettings
         {
@@ -21,10 +21,11 @@ namespace WpfMusicPlayer.Models
             }
             
             [XmlElement("channel-type")] public ChannelType Channel { get; set; }
+            [XmlElement("volume")] public double Volume { get; set; } = 1.0;
         }
         
         [XmlElement("ui-settings")]
-        public UISettings UI { get; set; } = new UISettings();
+        public UISettings UI { get; set; } = new();
 
         public class UISettings
         {
@@ -44,7 +45,26 @@ namespace WpfMusicPlayer.Models
                 [XmlEnum("image-blur")] ImageBlur
             }
 
-            [XmlElement("background")] public BackgroundMode Background { get; set; }
+            [XmlElement("background")]
+            public BackgroundMode Background { get; set; }
+        }
+
+        [XmlElement("desktop-lyric")]
+        public DesktopLyricSettings DesktopLyric { get; set; } = new();
+
+        public class DesktopLyricSettings
+        {
+            [XmlElement("desktop-lyric-enabled")]
+            public bool IsDesktopLyricEnabled { get; set; }
+            
+            [XmlElement("desktop-lyric-font-size")]
+            public double DesktopLyricFontSize { get; set; } = 24;
+
+            [XmlElement("desktop-lyric-aux-customizable")]
+            public bool IsDesktopLyricAuxCustomizable { get; set; }
+
+            [XmlElement("desktop-lyric-aux-font-size")]
+            public double DesktopLyricAuxFontSize { get; set; } = 18;
         }
     }
 }

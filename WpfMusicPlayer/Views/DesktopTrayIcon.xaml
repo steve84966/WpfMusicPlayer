@@ -1,0 +1,78 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:tb="http://www.hardcodet.net/taskbar">
+    <tb:TaskbarIcon x:Key="TrayIcon"
+                    Visibility="Collapsed"
+                    ToolTipText="{Binding TaskBarToolTipText}"
+                    IconSource="pack://application:,,,/Assets/ApplicationIcon.ico"
+                    MenuActivation="LeftOrRightClick"
+                    PopupActivation="DoubleClick">
+        <tb:TaskbarIcon.ContextMenu>
+            <ContextMenu>
+                <ContextMenu.Template>
+                    <ControlTemplate TargetType="ContextMenu">
+                        <Border Background="#2D2D2D" BorderBrush="#444444" BorderThickness="1"
+                                CornerRadius="4" Padding="0,4">
+                            <StackPanel IsItemsHost="True"/>
+                        </Border>
+                    </ControlTemplate>
+                </ContextMenu.Template>
+                <ContextMenu.Resources>
+                    <Style TargetType="MenuItem">
+                        <Setter Property="Foreground" Value="White"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="MenuItem">
+                                    <Border x:Name="Bd" Background="Transparent" Padding="10,6">
+                                        <StackPanel Orientation="Horizontal">
+                                            <ContentPresenter ContentSource="Icon" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                            <ContentPresenter ContentSource="Header" VerticalAlignment="Center"
+                                                              TextBlock.Foreground="{TemplateBinding Foreground}"/>
+                                        </StackPanel>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bd" Property="Background" Value="#3D3D3D"/>
+                                        </Trigger>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter Property="Opacity" Value="0.5"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                    <Style TargetType="Separator">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Separator">
+                                    <Border Background="#444444" Height="1" Margin="4,2"/>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ContextMenu.Resources>
+
+                <MenuItem Header="显示主窗口"
+                          Command="{Binding ToggleMainWindowCommand}">
+                    <MenuItem.Icon>
+                        <TextBlock Text="&#xE737;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="White"/>
+                    </MenuItem.Icon>
+                </MenuItem>
+                <MenuItem Header="{Binding DesktopLyricVisibleTooltip}"
+                          Command="{Binding ToggleDesktopLyricCommand}">
+                    <MenuItem.Icon>
+                        <TextBlock Text="&#xE8C1;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="White"/>
+                    </MenuItem.Icon>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="退出"
+                          Command="{Binding ShutdownApplicationCommand}">
+                    <MenuItem.Icon>
+                        <TextBlock Text="&#xE7E8;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="White"/>
+                    </MenuItem.Icon>
+                </MenuItem>
+            </ContextMenu>
+        </tb:TaskbarIcon.ContextMenu>
+    </tb:TaskbarIcon>
+</ResourceDictionary>

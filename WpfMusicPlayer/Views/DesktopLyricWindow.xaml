@@ -1,0 +1,230 @@
+<Window x:Class="WpfMusicPlayer.Views.DesktopLyricWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:WpfMusicPlayer.ViewModels"
+        xmlns:helpers="clr-namespace:WpfMusicPlayer.Helpers"
+        mc:Ignorable="d"
+        d:DataContext="{d:DesignInstance Type=vm:DesktopLyricViewModel}"
+        Title="桌面歌词"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        Width="800" Height="150"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <helpers:KaraokeClipConverter x:Key="KaraokeClipConverter"/>
+
+        <Style x:Key="DesktopLyricButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Background" Value="#66333333"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bg" Background="{TemplateBinding Background}"
+                                CornerRadius="4" Padding="2">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#88333333"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bg" Property="Background" Value="#AA333333"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid"
+          MouseLeftButtonDown="Window_MouseLeftButtonDown"
+          MouseEnter="RootGrid_MouseEnter"
+          MouseLeave="RootGrid_MouseLeave">
+
+        <Border x:Name="HoverBackground" Background="#40000000" CornerRadius="8"
+                Opacity="0" IsHitTestVisible="False"/>
+
+        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Margin="60,0">
+
+            <Grid ClipToBounds="True" HorizontalAlignment="Center">
+                <helpers:MarqueeContainer IsUnbounded="{Binding CurrentLyric.IsProgressEnabled}">
+                    <Grid helpers:MarqueeBehavior.IsActive="{Binding CurrentLyric.IsHighlighted}"
+                          helpers:MarqueeBehavior.Progress="{Binding CurrentLyric.Progress}"
+                          helpers:MarqueeBehavior.IsProgressDriven="{Binding CurrentLyric.IsProgressEnabled}">
+
+                        <TextBlock x:Name="BaseLyricText"
+                                   Text="{Binding CurrentLyric.Text}"
+                                   FontSize="{Binding FontSize}"
+                                   FontWeight="Bold"
+                                   TextWrapping="NoWrap"
+                                   TextAlignment="Center"
+                                   HorizontalAlignment="Center">
+                            <!-- 渐变笔刷效果 -->
+                            <TextBlock.Foreground>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Color="#DDDDDDDD" Offset="0"/>
+                                    <GradientStop Color="#AABBBBBB" Offset="1"/>
+                                </LinearGradientBrush>
+                            </TextBlock.Foreground>
+                            <!-- 阴影效果 -->
+                            <TextBlock.Effect>
+                                <DropShadowEffect Color="Black" BlurRadius="4"
+                                                  ShadowDepth="1" Opacity="0.85"/>
+                            </TextBlock.Effect>
+                        </TextBlock>
+
+                        <!-- 无进度时整行染色，有进度时卡拉OK裁剪 -->
+                        <TextBlock Text="{Binding CurrentLyric.Text}"
+                                   FontSize="{Binding FontSize}"
+                                   FontWeight="Bold"
+                                   TextWrapping="NoWrap"
+                                   IsHitTestVisible="False">
+                            <TextBlock.Foreground>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Color="#FF39C5BB" Offset="0"/>
+                                    <GradientStop Color="#FF74C1C5" Offset="1"/>
+                                </LinearGradientBrush>
+                            </TextBlock.Foreground>
+                            <TextBlock.Effect>
+                                <DropShadowEffect Color="#FF81CFCD" BlurRadius="5"
+                                                  ShadowDepth="0" Opacity="0.5"/>
+                            </TextBlock.Effect>
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <MultiDataTrigger>
+                                            <MultiDataTrigger.Conditions>
+                                                <Condition Binding="{Binding CurrentLyric.IsHighlighted, FallbackValue='False'}" Value="True"/>
+                                                <Condition Binding="{Binding CurrentLyric.IsProgressEnabled, FallbackValue='False'}" Value="False"/>
+                                            </MultiDataTrigger.Conditions>
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </MultiDataTrigger>
+                                        <DataTrigger Binding="{Binding CurrentLyric.IsProgressEnabled, FallbackValue='False'}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                            <Setter Property="Clip">
+                                                <Setter.Value>
+                                                    <MultiBinding Converter="{StaticResource KaraokeClipConverter}">
+                                                        <Binding Path="CurrentLyric.Progress" FallbackValue="0.0f"/>
+                                                        <Binding Path="ActualWidth" RelativeSource="{RelativeSource Self}"/>
+                                                    </MultiBinding>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </helpers:MarqueeContainer>
+            </Grid>
+
+            <TextBlock Text="{Binding CurrentLyric.Translation, FallbackValue=''}"
+                       FontSize="{Binding AuxFontSize}" FontWeight="Normal"
+                       TextAlignment="Center" TextWrapping="NoWrap"
+                       Margin="0,4,0,0"
+                       HorizontalAlignment="Center"
+                       Foreground="#CCDDDDDD"
+                       Visibility="{Binding TranslationVisibility}">
+                <TextBlock.Effect>
+                    <DropShadowEffect Color="Black" BlurRadius="3"
+                                      ShadowDepth="1" Opacity="0.7"/>
+                </TextBlock.Effect>
+            </TextBlock>
+            
+            <TextBlock Text="{Binding CurrentLyric.Romanji, FallbackValue=''}"
+                       FontSize="{Binding AuxFontSize}" FontWeight="Normal"
+                       TextAlignment="Center" TextWrapping="NoWrap"
+                       Margin="0,4,0,0"
+                       HorizontalAlignment="Center"
+                       Foreground="#CCDDDDDD"
+                       Visibility="{Binding RomanjiVisibility}">
+                <TextBlock.Effect>
+                    <DropShadowEffect Color="Black" BlurRadius="3"
+                                      ShadowDepth="1" Opacity="0.7"/>
+                </TextBlock.Effect>
+            </TextBlock>
+        </StackPanel>
+
+        <!-- 解锁状态：完整控制条 -->
+        <StackPanel x:Name="ControlBar" Orientation="Horizontal"
+                    HorizontalAlignment="Center" VerticalAlignment="Top"
+                    Margin="0,4,0,0" Opacity="0" Visibility="Collapsed">
+            <Button Content="A-" Width="28" Height="28" FontSize="12"
+                    Click="DecreaseFont_Click"
+                    Style="{StaticResource DesktopLyricButtonStyle}"/>
+            <Button Content="A+" Width="28" Height="28" FontSize="12" Margin="4,0,0,0"
+                    Click="IncreaseFont_Click"
+                    Style="{StaticResource DesktopLyricButtonStyle}"/>
+            <Button Content="译" Width="28" Height="28" FontSize="12" Margin="4,0,0,0"
+                    Command="{Binding ToggleTranslationCommand}">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource DesktopLyricButtonStyle}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsTranslationOn}" Value="True">
+                                <Setter Property="Background" Value="#8839C5BB"/>
+                                <Setter Property="BorderBrush" Value="#FF39C5BB"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding HasTranslation}" Value="False">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            <Button Content="あ" Width="28" Height="28" FontSize="12" Margin="4,0,0,0"
+                    Command="{Binding ToggleRomanjiCommand}">
+                <Button.Style>
+                    <Style TargetType="Button" BasedOn="{StaticResource DesktopLyricButtonStyle}">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsRomanjiOn}" Value="True">
+                                <Setter Property="Background" Value="#8839C5BB"/>
+                                <Setter Property="BorderBrush" Value="#FF39C5BB"/>
+                                <Setter Property="BorderThickness" Value="1"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding HasRomanji}" Value="False">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            <Button x:Name="LockButton" Width="28" Height="28" Margin="4,0,0,0"
+                    Click="Lock_Click"
+                    Style="{StaticResource DesktopLyricButtonStyle}">
+                <TextBlock x:Name="LockIcon" Text="&#xE785;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                           Foreground="White"/>
+            </Button>
+            <Button Width="28" Height="28" Margin="4,0,0,0"
+                    Click="Close_Click"
+                    Style="{StaticResource DesktopLyricButtonStyle}">
+                <TextBlock Text="&#xE711;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                           Foreground="White"/>
+            </Button>
+        </StackPanel>
+
+        <!-- 锁定状态：仅显示解锁按钮 -->
+        <StackPanel x:Name="UnlockBar" Orientation="Horizontal"
+                    HorizontalAlignment="Center" VerticalAlignment="Top"
+                    Margin="0,4,0,0" Opacity="0" Visibility="Collapsed">
+            <Button Width="28" Height="28"
+                    Click="Unlock_Click" ToolTip="解锁桌面歌词"
+                    Style="{StaticResource DesktopLyricButtonStyle}">
+                <TextBlock Text="&#xE72E;" FontFamily="Segoe MDL2 Assets" FontSize="14"
+                           Foreground="White"/>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

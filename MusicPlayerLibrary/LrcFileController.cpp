@@ -120,7 +120,11 @@ CSimpleArray<CString> SplitLrcForProgressMultiNode2(const CSimpleArray<CString>&
 }
 
 static const std::initializer_list<CString> chinese_aux_lyric_start = {
-    _T("作词:"), _T("作词："), _T("作曲:"), _T("作曲："), _T("词:"), _T("词："), _T("曲:"), _T("曲：")
+    _T("作词:"), _T("作词："), 
+    _T("作曲:"), _T("作曲："), 
+    _T("词:"), _T("词："),
+    _T("曲:"), _T("曲："), 
+    _T("编曲:"), _T("编曲：")
 };
 
 LrcMultiNode::LrcMultiNode(int t, const CSimpleArray<CString>& texts) :
@@ -211,22 +215,35 @@ LrcMultiNode::LrcMultiNode(int t, const CSimpleArray<CString>& texts) :
     if (eng_index != -1)
     {
         float eng_prob, romaji_prob;
-        const bool has_jp_or_kr_lyric = jp_index != -1 || kr_index != -1;
+        // 更改为has_cjk_lyric 处理汉语拼音和粤拼
+        const bool has_cjk_lyric = jp_index != -1 || kr_index != -1 || zh_index != -1;
         const bool has_zh_only_pair = jp_index == -1 && kr_index == -1 && zh_index != -1;
         const bool is_strong_separated_romaji = has_zh_only_pair && IsStrongSeparatedRomaji(texts[eng_index]);
-        LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index], &eng_prob, &romaji_prob);
+        if (has_zh_only_pair) {
+            float eng_prob_2, romaji_prob_2;
+            LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index], &eng_prob, &romaji_prob, LrcLanguageHelper::DetectRomajiUseAlgorithm::Jyutping);
+            LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index], &eng_prob_2, &romaji_prob_2, LrcLanguageHelper::DetectRomajiUseAlgorithm::Romaji);
+            if (romaji_prob_2 > romaji_prob) {
+                eng_prob = eng_prob_2; romaji_prob = romaji_prob_2;
+                // 到底是谁想出的把曲罗马化成kyo ku的，不会写可以不要写行不，还要我做两次检测取置信度高的
+            }
+        }
+        else
+            LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index], &eng_prob, &romaji_prob);
         if (eng_prob > romaji_prob)
         {
             aux_infos[eng_index] = LrcAuxiliaryInfoNative::Lyric;
         }
-        else if (eng_prob < romaji_prob && (has_jp_or_kr_lyric || is_strong_separated_romaji))
+        else if (eng_prob < romaji_prob && (has_cjk_lyric || is_strong_separated_romaji))
         {
 //            ATLTRACE(_T("info: romanization hit, line %s\n"), texts[eng_index].GetString());
             aux_infos[eng_index] = LrcAuxiliaryInfoNative::Romanization;
-            if (is_strong_separated_romaji)
+            if (is_strong_separated_romaji ||
+                (jp_index == -1 && kr_index == -1 && zh_index != -1))
             {
                 // 坑：英语实际为罗马音，中文应为歌词正文而非翻译
                 // 注意此处要检查是否为强分隔罗马音，避免长得像英语的被一棒子打死
+                // 只有中文的情况下，汉拼和粤拼作为罗马音存在，将中文行纠正为歌词
                 aux_infos[zh_index] = LrcAuxiliaryInfoNative::Lyric;
             }
         }
@@ -235,25 +252,79 @@ LrcMultiNode::LrcMultiNode(int t, const CSimpleArray<CString>& texts) :
             ATLTRACE(_T("warn: unknown romaji, ignoring eng line: %s\n"), texts[eng_index].GetString());
             aux_infos[eng_index] = LrcAuxiliaryInfoNative::Ignored;
         }
+        int eng_index_2;
+        for (eng_index_2 = eng_index + 1; eng_index_2 < str_count; ++eng_index_2) 
+        {
+            if (lang_types[eng_index_2] == LrcLanguageHelper::LanguageType::en) 
+            {
+                break;
+            }
+        }
+        if (eng_index_2 < str_count &&
+            zh_index == -1 && jp_index == -1 && kr_index == -1) 
+        {
+            // 哦真的牛批 这儿还要加一组强匹配 还有被漏到英文里的漏网之鱼
+            for (const auto& chn_start: chinese_aux_lyric_start)
+            {
+                if (texts[eng_index].Find(chn_start) == 0)
+                {
+                    aux_infos[eng_index] = LrcAuxiliaryInfoNative::Lyric;
+                    aux_infos[eng_index_2] = LrcAuxiliaryInfoNative::Romanization;
+                    return;
+                }
+            }
+            for (const auto& chn_start: chinese_aux_lyric_start)
+            {
+                if (texts[eng_index_2].Find(chn_start) == 0)
+                {
+                    aux_infos[eng_index_2] = LrcAuxiliaryInfoNative::Lyric;
+                    aux_infos[eng_index] = LrcAuxiliaryInfoNative::Romanization;
+                    return;
+                }
+            }
+            float eng_prob_en_detect, romaji_prob_en_detect;
+            LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index], &eng_prob_en_detect, &romaji_prob_en_detect);
+            float eng_prob_en_detect_2, romaji_prob_en_detect_2;
+            LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index_2], &eng_prob_en_detect_2, &romaji_prob_en_detect_2);
+            if (romaji_prob_en_detect_2 > romaji_prob_en_detect) 
+            {
+                // eng_index是被流放的歌词
+                aux_infos[eng_index] = LrcAuxiliaryInfoNative::Lyric;
+                aux_infos[eng_index_2] = LrcAuxiliaryInfoNative::Romanization;
+            }
+            else
+            {
+                aux_infos[eng_index_2] = LrcAuxiliaryInfoNative::Lyric;
+                aux_infos[eng_index] = LrcAuxiliaryInfoNative::Romanization;
+            }
+        }
     }
 }
 
-void LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(const CString& input, float* eng_prob, float* jpn_romaji_prob)
+void LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(const CString& input, float* eng_prob, float* jpn_romaji_prob, DetectRomajiUseAlgorithm alg)
 {
     CString lower = input;
     lower.MakeLower();
     CStringA str{CT2A(lower)};
-    std::initializer_list<CStringA> romaji_syllables = {
+    static const std::initializer_list<CStringA> romaji_syllables = {
         // 五十音图（去掉单元音，因为也同时包含在英语中）
         "ka", "ki", "ku", "ke", "ko", "sa", "shi", "su", "se", "so",
         "ta", "chi", "tsu", "te", "to", "na", "ni", "nu", "ne", "no",
         "ha", "hi", "fu", "he", "ho", "ma", "mi", "mu", "me", "mo",
         "ya", "yu", "yo", "ra", "ri", "ru", "re", "ro", "wa", "wo", "n"
     };
-    std::initializer_list<CStringA> english_clusters = {
+    static const std::initializer_list<CStringA> english_clusters = {
         // 常见英语辅音组合
         "th", "sh", "ph", "bl", "cl", "str", "spr", "pr", "tr", "dr"
     };
+    
+    if (alg == DetectRomajiUseAlgorithm::Jyutping)
+    {
+        float jyutping_confidence = detect_is_jyutping(input);
+        *jpn_romaji_prob = jyutping_confidence;
+        *eng_prob = 1.0f - jyutping_confidence;
+        return;
+    }
 
     int romaji_score = 0;
     int english_score = 0;
@@ -394,6 +465,97 @@ LrcLanguageHelper::detect_language_type(const CString& input, float* probability
         return LanguageType::kr;
     }
     return LanguageType::others;
+}
+
+// 最长匹配列表中的token
+CStringA match_from_list(const CStringA& s, int pos,
+                         const std::initializer_list<CStringA>& list) {
+    CStringA best, input = s;
+    for (auto& tk : list) {
+        int len = tk.GetLength();
+        if (pos + len <= input.GetLength() &&
+            strncmp(input.Mid(pos, len), tk, len) == 0) 
+        {
+            if (len > best.GetLength()) best = tk;
+        }
+    }
+    return best;
+}
+
+// 大概没人在歌词里写拼音...吧？
+// 网易云都说歌词里包含拼音审核不通过。
+
+// 保留粤拼检测算法
+float LrcLanguageHelper::detect_is_jyutping(const CString& input)
+{
+    const auto s = static_cast<CStringA>(CT2A(input));
+    // 根据LSHK官方粤拼文档校正，加入其他方案的常见组合，最大程度提升置信度
+    static const std::initializer_list<CStringA> jyutping_initials = { // 粤拼声母
+        "b", "p", "d", "t", "g", "k", "gw", "kw", "gu", "ku", // 爆发音
+        "m", "n", "ng", // 塞擦音
+        "z", "c", "dz", "ts", // 鼻音
+        "f", "s", "h", // 擦音
+        "w", "j", "y", // 近音
+        "l" // 边近音
+    };
+    static const std::initializer_list<CStringA> jyutping_finals = { // 粤拼韵母
+        "i", "iu", "im", "in", "ing", // i-
+        "u", "ui", "un", "um", "ung", // u-
+        "ei", "en", "e", "eu", "em", "eng", // e-
+        "eoi", "eon", // eo-
+        "oe", "oeng", // oe-
+        "ou", "o", "oi", "on", "ong", // o-
+        "a", "ai", "au", "am", "an", "ang", // a-
+        "aa", "aai", "aau", "aam", "aan", "aang" // aa-
+    };
+    static const std::initializer_list<CStringA> jyutping_nasal_sounds = { // 鼻音单独成韵（粤语特有）
+        "m", "ng"
+    };
+    int i = 0;
+    auto len = s.GetLength();
+    int confidence_token = 0, total_token = 0;
+    while (i < len) {
+        // 声母（最长匹配，可以没有）
+        total_token++;
+        CStringA initial = match_from_list(s, i, jyutping_initials);
+        if (!initial.IsEmpty()) i += initial.GetLength();
+
+        // 韵母（最长匹配，必须包含）
+        CStringA final = match_from_list(s, i, jyutping_finals);
+        if (final.IsEmpty())
+        {
+            // 检测鼻音单独成韵的特殊情况
+            CStringA nasal_sound = match_from_list(s, i, jyutping_nasal_sounds);
+            if (nasal_sound.IsEmpty())
+            {
+                for (; i < len && s[i] != ' '; ++i)
+                    ;
+                if (i == len - 1)
+                    break;
+                ++i;
+                continue;
+            }
+            i += nasal_sound.GetLength();
+        }
+        else
+        {
+            i += final.GetLength();
+        }
+
+        // 入声尾（可选）
+        if (i < len) {
+            char c = s[i];
+            if (c == 'p' || c == 't' || c == 'k') i++;
+        }
+        
+        for (; i < len; ++i) {
+            unsigned char c = s[i];
+            if (isalpha(c)) break;
+        }
+        confidence_token++;
+    }
+    float confidence = confidence_token * 1.0f / total_token;
+    return confidence;
 }
 
 LrcProgressNode::LrcProgressNode(int t, const CString& text_with_node)
@@ -694,7 +856,7 @@ void LrcFileControllerNative::parse_lrc_file_stream(CFile* file_stream)
                 auto multiples = 3 - milliseconds_str.GetLength();
                 milliseconds *= std::floor(pow(10, multiples));
             }
-            int total_ms_multi = minutes * 60000 + seconds * 1000 + milliseconds + lrc_offset_ms;
+            int total_ms_multi = minutes * 60000 + seconds * 1000 + milliseconds;
             if (total_ms_multi < 0) total_ms_multi = 0;
             time_stamps.push_back(total_ms_multi);
             lyric_text = lyric_text.Mid(time_tag_end_index_multi + 1).Trim();
@@ -751,6 +913,7 @@ void LrcFileControllerNative::clear_lrc_nodes()
 
 void LrcFileControllerNative::set_time_stamp(int time_stamp_ms_in)
 {
+    time_stamp_ms_in -= lrc_offset_ms;
     if (time_stamp_ms_in < time_stamp_ms)
     {
         // reverse query, set index to zero
@@ -770,7 +933,7 @@ void LrcFileControllerNative::set_time_stamp(int time_stamp_ms_in)
     {
         cur_lrc_node_index = lrc_nodes.GetCount() - 1;
     }
-    time_stamp_ms = time_stamp_ms_in;
+    time_stamp_ms = time_stamp_ms_in + lrc_offset_ms;
 }
 
 void LrcFileControllerNative::time_stamp_increase(int ms)
@@ -970,6 +1133,18 @@ void LrcFileController::SetSongDuration(float durationSec)
 {
     check_if_null();
     native_handle->set_song_duration(durationSec);
+}
+
+int LrcFileController::GetLrcOffset()
+{
+    check_if_null();
+    return native_handle->get_lrc_offset();
+}
+
+void LrcFileController::SetLrcOffsetExt(int offsetMs)
+{
+    check_if_null();
+    native_handle->set_lrc_offset_ext(offsetMs);
 }
 
 bool LrcFileController::Valid()

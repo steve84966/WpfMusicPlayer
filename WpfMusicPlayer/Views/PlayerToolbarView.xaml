@@ -150,7 +150,7 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Command="{Binding TogglePlaylistCommand}" 
+                    <Button Command="{Binding ToggleDesktopLyricCommand}" ToolTip="桌面歌词"
                             Margin="10,0" Width="50" Height="50" Background="Transparent" Foreground="White" BorderThickness="0">
                         <Button.Style>
                             <Style TargetType="Button">
@@ -160,7 +160,7 @@
                                     <Setter.Value>
                                         <ControlTemplate TargetType="Button">
                                             <Border x:Name="Bg" Background="{TemplateBinding Background}" CornerRadius="6">
-                                                <TextBlock Text="&#xE90B;" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="{TemplateBinding Foreground}"
+                                                <TextBlock x:Name="BtnText" Text="&#xE8C1;" FontFamily="Segoe MDL2 Assets" FontSize="24" Foreground="{TemplateBinding Foreground}"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                             </Border>
                                             <ControlTemplate.Triggers>
@@ -174,6 +174,11 @@
                                         </ControlTemplate>
                                     </Setter.Value>
                                 </Setter>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding DesktopLyric.IsDesktopLyricVisible}" Value="True">
+                                        <Setter Property="Background" Value="#440078D7"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
                             </Style>
                         </Button.Style>
                     </Button>

@@ -13,8 +13,6 @@ public interface ICommandLineParser
 
     public bool AutoStart { get; }
 
-    public float Volume { get; }
-
     public ActiveView StartupView { get; }
 
     public string OpenedPlaylistPath { get; }
@@ -22,6 +20,10 @@ public interface ICommandLineParser
     public bool TranslationToggled { get; }
 
     public bool RomanjiToggled { get; }
+    
+    public PlayMode CurrentPlayMode { get; }
+    
+    public bool IsDesktopLyricToggled { get; }
 
     public int[] AppliedEqualizerSettings { get; }
 }

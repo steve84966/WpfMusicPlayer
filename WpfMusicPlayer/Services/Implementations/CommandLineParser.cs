@@ -18,11 +18,11 @@ public class CommandLineParser : ICommandLineParser
             { "-t", "MusicCurrentTime" },
             { "--autostart", "AutoStart" },
             { "-a", "AutoStart" },
-            { "--volume", "Volume" },
-            { "-v", "Volume" },
             { "--view", "StartupView" },
             { "--playlist", "OpenedPlaylistPath" },
             { "-p", "OpenedPlaylistPath" },
+            { "--playmode", "CurrentPlayMode" },
+            { "--desktoplyric", "IsDesktopLyricToggled" },
             { "--translation", "TranslationToggled" },
             { "--romanji", "RomanjiToggled" }
         };
@@ -41,9 +41,6 @@ public class CommandLineParser : ICommandLineParser
     public bool AutoStart =>
         bool.TryParse(_configuration["AutoStart"], out var auto) && auto;
 
-    public float Volume =>
-        float.TryParse(_configuration["Volume"], out var vol) ? vol : 1.0f;
-
     public ActiveView StartupView =>
         Enum.TryParse<ActiveView>(_configuration["StartupView"], true, out var view)
             ? view
@@ -57,6 +54,13 @@ public class CommandLineParser : ICommandLineParser
 
     public bool RomanjiToggled =>
         bool.TryParse(_configuration["RomanjiToggled"], out var r) && r;
+    
+    public PlayMode CurrentPlayMode =>
+        Enum.TryParse<PlayMode>(_configuration["CurrentPlayMode"], true, out var mode)
+            ? mode : PlayMode.Sequential;
+    
+    public bool IsDesktopLyricToggled =>
+        bool.TryParse(_configuration["IsDesktopLyricToggled"], out var d) && d;
 
     public int[] AppliedEqualizerSettings
     {

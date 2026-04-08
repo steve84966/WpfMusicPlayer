@@ -9,4 +9,5 @@ public class SongRecord
     public string Title { get; set; } = string.Empty;
     public int PlayCount { get; set; }
     public string CustomLyric { get; set; } = string.Empty;
+    public int CustomLyricOffsetMs { get; set; }
 }

@@ -27,6 +27,7 @@ namespace WpfMusicPlayer
         private bool _backgroundInitialized;
         private DecodingDialog? _decodingDialog;
         private readonly DispatcherTimer _spectrumTimer;
+        private DesktopLyricWindow? _desktopLyricWindow;
 
         public MainWindow(MainViewModel viewModel, ISmtcService smtcService)
         {
@@ -45,6 +46,14 @@ namespace WpfMusicPlayer
             };
             ViewModel.PropertyChanged += ViewModel_PropertyChanged;
             ViewModel.Lyrics.PropertyChanged += LyricsPropertyChanged;
+            ViewModel.DesktopLyric.PropertyChanged += DesktopLyricPropertyChanged;
+
+            // 从命令行恢复时，IsDesktopLyricVisible可能已经设置
+            if (ViewModel.DesktopLyric.IsDesktopLyricVisible)
+            {
+                _desktopLyricWindow ??= new DesktopLyricWindow(ViewModel.DesktopLyric);
+                _desktopLyricWindow.Show();
+            }
 
             _spectrumTimer = new DispatcherTimer(DispatcherPriority.Render)
             {
@@ -161,6 +170,24 @@ namespace WpfMusicPlayer
             ScrollLyricToCenter(PortraitLyricsView.LyricsList, index);
         }
 
+        
+        private void DesktopLyricPropertyChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName != nameof(DesktopLyricViewModel.IsDesktopLyricVisible)) return;
+
+            if (ViewModel.DesktopLyric.IsDesktopLyricVisible)
+            {
+                _desktopLyricWindow ??= new DesktopLyricWindow(ViewModel.DesktopLyric);
+                _desktopLyricWindow.Show();
+            }
+            else
+            {
+                if (_desktopLyricWindow is { IsLocked: true })
+                    _desktopLyricWindow.Unlock();
+                _desktopLyricWindow?.Hide();
+            }
+        }
+
         private static void ScrollLyricToCenter(ListBox listBox, int index)
         {
             if (index < 0 || index >= listBox.Items.Count) return;
@@ -223,6 +250,8 @@ namespace WpfMusicPlayer
             _spectrumTimer.Stop();
             ViewModel.PropertyChanged -= ViewModel_PropertyChanged;
             ViewModel.Lyrics.PropertyChanged -= LyricsPropertyChanged;
+            ViewModel.DesktopLyric.PropertyChanged -= DesktopLyricPropertyChanged;
+            _desktopLyricWindow?.Close();
             _decodingDialog?.Close();
             _decodingDialog = null;
             ViewModel.OnWindowClosed();
@@ -236,15 +265,25 @@ namespace WpfMusicPlayer
                 if (!e.Data.GetDataPresent(DataFormats.FileDrop)) return;
                 var files = (string[]?)e.Data.GetData(DataFormats.FileDrop);
                 if (!(files?.Length > 0)) return;
+                // 在UI线程上缓存ViewModel引用
+                var vm = ViewModel;
                 try
                 {
                     if (files[0].EndsWith(".wppl", StringComparison.OrdinalIgnoreCase))
                     {
-                        await ViewModel.OpenExternalPlaylist(files[0]);
+                        await vm.OpenExternalPlaylist(files[0]);
                         return;
                     }
 
-                    ViewModel.OpenFile(files[0]);
+                    var validFiles = files
+                        .Where(f => vm.ExtensionList.Any(ext => f.EndsWith(ext, StringComparison.OrdinalIgnoreCase)))
+                        .ToArray();
+                    if (validFiles.Length > 0)
+                        // 巨坑：不能直接在后台线程访问DataContext！！！
+                        // 直接OpenFile会导致阻塞UI线程
+                        await Task.Run(() => vm.OpenFile(validFiles[0]));
+                    else
+                        WpfMessageBox.Show("不要什么东西都往窗口上拖啊喂！", "别拖了！", WpfMessageBoxIcon.Error);
                 }
                 catch (Exception ex)
                 {
@@ -769,6 +808,12 @@ namespace WpfMusicPlayer
                         WpfMessageBoxIcon.Information);
                     break;
             }
+        }
+
+        private void HideApplicationButton_Click(object sender, RoutedEventArgs e)
+        {
+            ViewModel.DesktopTrayIcon.EnableTaskbarIcon();
+            Hide();
         }
     }
 }

@@ -2,6 +2,7 @@ namespace WpfMusicPlayer.Services.Abstractions;
 
 public interface IFileDialogService
 {
+    public List<string> ExtensionList { get; }
     Task<string?> PickMusicFileAsync();
     Task<IReadOnlyList<string>> PickMusicFilesAsync();
     Task<string?> PickWpplAsync();

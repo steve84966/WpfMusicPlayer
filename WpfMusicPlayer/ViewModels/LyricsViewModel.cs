@@ -14,7 +14,8 @@ public partial class LyricsViewModel(ILogger<LyricsViewModel> logger, IFileDialo
     private LrcFileController? _lrcFileController;
 
     public event Action<float>? SeekRequested;
-    public event Action<string>? UpdateCurrentLyricRequested;
+    public event Action<string, int>? UpdateCurrentLyricRequested;
+    public event Action<int>? UpdateCurrentLyricOffsetRequested;
 
     private float _currentLyricDuration;
 
@@ -103,7 +104,7 @@ public partial class LyricsViewModel(ILogger<LyricsViewModel> logger, IFileDialo
         }
     }
 
-    public void LoadLyrics(string? filePath, string? id3Lyric, string? songTitle, float songDuration)
+    public void LoadLyrics(string? filePath, string? id3Lyric, string? songTitle, float songDuration, int offsetMs)
     {
         logger.LogInformation("LoadLyrics: loading lyrics for {FilePath}", filePath);
         Lyrics.Clear();
@@ -117,7 +118,7 @@ public partial class LyricsViewModel(ILogger<LyricsViewModel> logger, IFileDialo
             try
             {
                 logger.LogInformation("LoadLyrics: found embedded ID3 lyrics");
-                ParseAndAddLocalLyric(id3Lyric, songDuration);
+                ParseAndAddLocalLyric(id3Lyric, songDuration, offsetMs);
                 return;
             }
             catch
@@ -134,7 +135,7 @@ public partial class LyricsViewModel(ILogger<LyricsViewModel> logger, IFileDialo
             {
                 var contentBytes = File.ReadAllBytes(lrcPath);
                 var content = LocaleConverter.GetSystemStringFromBytes(contentBytes);
-                ParseAndAddLocalLyric(content, songDuration);
+                ParseAndAddLocalLyric(content, songDuration, offsetMs);
                 return;
             }
             catch (Exception ex)
@@ -151,7 +152,7 @@ public partial class LyricsViewModel(ILogger<LyricsViewModel> logger, IFileDialo
             {
                 var contentBytes = File.ReadAllBytes(exactLrcPath);
                 var content = LocaleConverter.GetSystemStringFromBytes(contentBytes);
-                ParseAndAddLocalLyric(content, songDuration);
+                ParseAndAddLocalLyric(content, songDuration, offsetMs);
                 return;
             }
             catch (InvalidOperationException ex)
@@ -165,13 +166,18 @@ public partial class LyricsViewModel(ILogger<LyricsViewModel> logger, IFileDialo
         Lyrics.Add(new LyricLineViewModel("暂无歌词"));
     }
 
-    private void ParseAndAddLocalLyric(string content, float songDuration)
+    private void ParseAndAddLocalLyric(string content, float songDuration, int offsetMs)
     {
         _lrcFileController?.Dispose();
         _lrcFileController = new LrcFileController();
 
         _lrcFileController.ParseLrcStream(content);
         _lrcFileController.SetSongDuration(songDuration);
+        if (offsetMs != 0)
+        {
+            logger.LogInformation("ParseAndAddLocalLyric: overriding lrc offset to {OffsetMs}", offsetMs);
+            _lrcFileController.SetLrcOffsetExt(offsetMs);
+        }
         if (!_lrcFileController.Valid()) return;
 
         var hasTranslation = _lrcFileController.IsAuxiliaryInfoEnabled(LrcAuxiliaryInfo.Translation);
@@ -282,15 +288,29 @@ public partial class LyricsViewModel(ILogger<LyricsViewModel> logger, IFileDialo
         {
             var contentBytes = await File.ReadAllBytesAsync(path);
             var content = LocaleConverter.GetSystemStringFromBytes(contentBytes);
-            LoadLyrics(null, content, null, _currentLyricDuration);
-            UpdateCurrentLyricRequested?.Invoke(content);
+            LoadLyrics(null, content, null, _currentLyricDuration, 0);
+            UpdateCurrentLyricRequested?.Invoke(content, _lrcFileController?.GetLrcOffset() ?? 0);
         }
         catch (InvalidOperationException ex)
         {
             WpfMessageBox.Show(ex.Message, "Error", WpfMessageBoxIcon.Error);
         }
     }
-    
+
+    [RelayCommand]
+    public void AdjustLrcOffset()
+    {
+        if (_lrcFileController is null) return;
+        var offsetMs = 
+            OffsetAdjustDialog.Show(_lrcFileController.GetLrcOffset(), 
+                title: "调节歌词延迟",
+                onChanged: offset =>
+                {
+                    _lrcFileController.SetLrcOffsetExt(offset);
+                });
+        // 合并到确认延迟更新后再写回数据库，避免频繁回写造成性能开销
+        UpdateCurrentLyricOffsetRequested?.Invoke(offsetMs);
+    }
 
     private static float CalculateJaccardSimilarity(string str1, string str2)
     {

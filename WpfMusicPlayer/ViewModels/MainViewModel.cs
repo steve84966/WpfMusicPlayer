@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using MusicPlayerLibrary;
 using System.IO;
 using System.Runtime; 
@@ -39,7 +40,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private int _sampleRate;
     private bool _enableAutoPlay;
     private float? _pendingSeekTime;
-    private GCLatencyMode _previousLatencyMode;
+    private readonly GCLatencyMode _previousLatencyMode;
     private bool _isRestoredFromCommandLine;
     private bool _disableAutoAdvance;
     private bool _playCountIncrementedForCurrentSong;
@@ -57,6 +58,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         ICommandLineParser commandLineParser,
         PlaylistViewModel playlist,
         LyricsViewModel lyrics,
+        DesktopLyricViewModel desktopLyric,
+        DesktopTrayIconViewModel desktopTrayIcon,
         ILogger<MainViewModel> logger)
     {
         _configProvider = configProvider;
@@ -65,6 +68,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         _songDatabase = songDatabase;
         _commandLineParser = commandLineParser;
         _logger = logger;
+        _previousLatencyMode = GCSettings.LatencyMode;
         _syncContext = SynchronizationContext.Current!;
         Equalizer = new EqualizerViewModel(ApplyEqualizerBand);
         Settings = new SettingsViewModel(configProvider);
@@ -77,6 +81,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Lyrics = lyrics;
         Lyrics.SeekRequested += OnLyricsSeekRequested;
         Lyrics.UpdateCurrentLyricRequested += OnLyricsUpdateDatabaseRequested;
+        Lyrics.UpdateCurrentLyricOffsetRequested += OnLyricsUpdateOffsetMsRequired;
+        DesktopLyric = desktopLyric;
+        DesktopLyric.PropertyChanged += OnDesktopLyricPropertyChanged;
+        DesktopTrayIcon = desktopTrayIcon;
         CurrentBackgroundMode = configProvider.GetConfig().UI.Background;
         _sampleRate = 48000; // Studio quality
         _musicPlayer = new MusicPlayer(_sampleRate);
@@ -85,6 +93,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SubscribeSmtcEvents();
         RestoreSettingsFromCommandLine();
         _logger.LogInformation("MainViewModel initialized, sample rate: {SampleRate}", _sampleRate);
+    }
+
+    private void OnDesktopLyricPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(DesktopLyric.IsDesktopLyricVisible):
+                Settings.SelectedDesktopLyricEnabled = DesktopLyric.IsDesktopLyricVisible;
+                break;
+            case nameof(DesktopLyricViewModel.FontSize):
+                Settings.SelectedDesktopLyricFontSize = DesktopLyric.FontSize;
+                break;
+            case nameof(DesktopLyricViewModel.AuxFontSize):
+                Settings.SelectedDesktopLyricAuxFontSize = DesktopLyric.AuxFontSize;
+                break;
+            case nameof(DesktopLyricViewModel.IsAuxInfoCustomizable):
+                Settings.SelectedDesktopLyricIsAuxInfoCustomizable = DesktopLyric.IsAuxInfoCustomizable;
+                break;
+        }
     }
 
     private void OnRemovePlaylistItemRequested(string filePath)
@@ -139,10 +166,21 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Lyrics.UpdateLyricProgress(targetTimeSec);
     }
 
-    private void OnLyricsUpdateDatabaseRequested(string lyricContent)
+    private void OnLyricsUpdateDatabaseRequested(string lyricContent, int offsetMs)
     {
         var current = _songDatabase.FindByMd5(_currentMd5 ?? string.Empty);
         current?.CustomLyric = lyricContent;
+        current?.CustomLyricOffsetMs = offsetMs;
+        _logger.LogInformation("OnLyricsUpdateDatabaseRequired: offsetMs={offsetMs}", offsetMs);
+        if (current is not null)
+            _songDatabase.Upsert(current);
+    }
+
+    private void OnLyricsUpdateOffsetMsRequired(int offsetMs)
+    {
+        var current = _songDatabase.FindByMd5(_currentMd5 ?? string.Empty);
+        current?.CustomLyricOffsetMs = offsetMs;
+        _logger.LogInformation("OnLyricsUpdateOffsetMsRequired: offsetMs={OffsetMs}", offsetMs);
         if (current is not null)
             _songDatabase.Upsert(current);
     }
@@ -169,7 +207,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void RestoreSettingsFromCommandLine()
     {
         _logger.LogInformation("Restoring settings from command line");
-        Volume = _commandLineParser.Volume;
+        Volume = _configProvider.GetConfig().Audio.Volume;
+        DesktopLyric.FontSize = _configProvider.GetConfig().DesktopLyric.DesktopLyricFontSize;
+        DesktopLyric.AuxFontSize = _configProvider.GetConfig().DesktopLyric.DesktopLyricAuxFontSize;
+        DesktopLyric.IsAuxInfoCustomizable = _configProvider.GetConfig().DesktopLyric.IsDesktopLyricAuxCustomizable;
+        DesktopLyric.IsDesktopLyricVisible = _configProvider.GetConfig().DesktopLyric.IsDesktopLyricEnabled;
 
         if (string.IsNullOrEmpty(_commandLineParser.FilePath))
         {
@@ -198,6 +240,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         {
             _isRestoredFromCommandLine = true;
         }
+
+        DesktopLyric.IsDesktopLyricVisible = _commandLineParser.IsDesktopLyricToggled;
+        CurrentPlayMode = _commandLineParser.CurrentPlayMode;
 
         _logger.LogInformation("Restoring file from command line: {FilePath}, autoPlay: {AutoPlay}, seekTime: {SeekTime}",
             _commandLineParser.FilePath, _enableAutoPlay, _pendingSeekTime);
@@ -240,6 +285,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref field, value))
             {
                 _musicPlayer.SetMasterVolume((float)value);
+                Settings.SelectedVolume = Volume;
             }
         }
     } = 0.5;
@@ -275,6 +321,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public SettingsViewModel Settings { get; }
 
+    public DesktopLyricViewModel DesktopLyric { get; }
+    public DesktopTrayIconViewModel DesktopTrayIcon { get; }
+
     [ObservableProperty]
     public partial UISettings.BackgroundMode CurrentBackgroundMode { get; private set; }
 
@@ -291,7 +340,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     public string PlayModeContent => CurrentPlayMode switch
     {
-        PlayMode.Sequential => "\uF5E7",
+        PlayMode.Sequential => "\uE8FD",
         PlayMode.ListLoop => "\uE8EE",
         PlayMode.SingleLoop => "\uE8ED",
         PlayMode.Shuffle => "\uE8B1",
@@ -306,6 +355,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
         PlayMode.Shuffle => "随机播放",
         _ => "顺序播放"
     };
+
+    public List<string> ExtensionList =>
+        _fileDialogService.ExtensionList;
 
     // for RebootApplication to build command line args
     public bool IsMusicPlaying => _musicPlayer.IsPlaying();
@@ -397,7 +449,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnSettingChanged(object? sender, SettingChangedEventArgs e)
     {
-        _logger.LogInformation("Setting changed: {SettingName}", e.SettingName);
         if (e.SettingName == nameof(SettingsViewModel.SelectedBackground))
         {
             CurrentBackgroundMode = _configProvider.GetConfig().UI.Background;
@@ -424,9 +475,10 @@ public partial class MainViewModel : ObservableObject, IDisposable
             _logger.LogInformation("MainViewModel disposing, releasing resources");
             Settings.SettingChanged -= OnSettingChanged;
             Playlist.PlaySongRequested -= OnPlaylistSongRequested;
-            Playlist.ResetPlaylistRequested += OnPlaylistResetRequested;
+            Playlist.ResetPlaylistRequested -= OnPlaylistResetRequested;
             Lyrics.SeekRequested -= OnLyricsSeekRequested;
             Lyrics.UpdateCurrentLyricRequested -= OnLyricsUpdateDatabaseRequested;
+            Lyrics.UpdateCurrentLyricOffsetRequested -= OnLyricsUpdateOffsetMsRequired;
             GCSettings.LatencyMode = _previousLatencyMode;
             _musicPlayer.Dispose();
             _logger.LogInformation("MusicPlayer disposed");
@@ -518,6 +570,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             // 坑：UpdateMetadata会清除缩略图，对非NCM文件，FileInit总是晚于AlbumArtInit，导致设置的缩略图被清空
             _smtcService.UpdateTextMetadata(SongTitle, ArtistName);
+            DesktopTrayIcon.TaskBarToolTipText = $"{SongTitle} - {ArtistName}";
 
             _musicPlayer.SetMasterVolume((float)Volume);
             
@@ -528,7 +581,9 @@ public partial class MainViewModel : ObservableObject, IDisposable
                 customLyric = _musicPlayer.GetID3Lyric();
             }
 
-            Lyrics.LoadLyrics(_currentFilePath, customLyric, _musicPlayer.GetSongTitle(), _musicPlayer.GetMusicTimeLength());
+            var offsetMs = cached?.CustomLyricOffsetMs ?? 0;
+            _logger.LogInformation("OnFileInit: custom lyric offset: {OffsetMs}ms", offsetMs);
+            Lyrics.LoadLyrics(_currentFilePath, customLyric, _musicPlayer.GetSongTitle(), _musicPlayer.GetMusicTimeLength(), offsetMs);
             if (_pendingSeekTime is { } seekTime)
             {
                 _logger.LogInformation("OnFileInit: applying pending seek to {SeekTime}s", seekTime);
@@ -644,7 +699,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void OnStart()
     {
         _logger.LogInformation("OnStart: playback started, switching to SustainedLowLatency GC mode");
-        _previousLatencyMode = GCSettings.LatencyMode;
         GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
         if (!_playCountIncrementedForCurrentSong)
         {
@@ -950,6 +1004,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             CurrentTime = "0:00";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Stopped);
             _smtcService.UpdateTextMetadata("Unknown Title", "Unknown Artist");
+            DesktopTrayIcon.TaskBarToolTipText = "WpfMusicPlayer";
             Lyrics.ResetState();
         }
     }
@@ -964,6 +1019,12 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void TogglePlaylist()
     {
         ActiveView = ActiveView == ActiveView.Playlist ? ActiveView.Player : ActiveView.Playlist;
+    }
+
+    [RelayCommand]
+    private void ToggleDesktopLyric()
+    {
+        DesktopLyric.IsDesktopLyricVisible = !DesktopLyric.IsDesktopLyricVisible;
     }
 
     private void AddToPlaylist()
