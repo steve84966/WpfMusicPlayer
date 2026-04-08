@@ -41,8 +41,6 @@ internal static class RebootApplicationHelper
                 parts.Add("true");
             }
         }
-        parts.Add("--volume");
-        parts.Add(((float)vm.Volume).ToString(CultureInfo.InvariantCulture));
         parts.Add("--view");
         parts.Add(vm.ActiveView.ToString());
         // 预留的接口

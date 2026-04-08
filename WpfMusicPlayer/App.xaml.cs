@@ -50,8 +50,10 @@ public partial class App : Application
                     services.AddSingleton<PlaylistViewModel>();
                     services.AddSingleton<LyricsViewModel>();
                     services.AddSingleton<DesktopLyricViewModel>();
+                    services.AddSingleton<DesktopTrayIconViewModel>();
                     services.AddSingleton<MainViewModel>();
 
+                    services.AddSingleton<DesktopTrayIcon>();
                     services.AddSingleton<MainWindow>();
                 })
                 .Build();
@@ -66,6 +68,8 @@ public partial class App : Application
 
         var mainWindow = _host.Services.GetRequiredService<MainWindow>();
         mainWindow.Show();
+
+        _host.Services.GetRequiredService<DesktopTrayIcon>();
 
         base.OnStartup(e);
     }

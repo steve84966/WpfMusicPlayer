@@ -282,6 +282,8 @@ namespace WpfMusicPlayer
                         // 巨坑：不能直接在后台线程访问DataContext！！！
                         // 直接OpenFile会导致阻塞UI线程
                         await Task.Run(() => vm.OpenFile(validFiles[0]));
+                    else
+                        WpfMessageBox.Show("不要什么东西都往窗口上拖啊喂！", "别拖了！", WpfMessageBoxIcon.Error);
                 }
                 catch (Exception ex)
                 {
@@ -806,6 +808,12 @@ namespace WpfMusicPlayer
                         WpfMessageBoxIcon.Information);
                     break;
             }
+        }
+
+        private void HideApplicationButton_Click(object sender, RoutedEventArgs e)
+        {
+            ViewModel.DesktopTrayIcon.EnableTaskbarIcon();
+            Hide();
         }
     }
 }

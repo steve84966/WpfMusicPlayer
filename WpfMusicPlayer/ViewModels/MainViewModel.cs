@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using MusicPlayerLibrary;
 using System.IO;
 using System.Runtime; 
@@ -58,6 +59,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
         PlaylistViewModel playlist,
         LyricsViewModel lyrics,
         DesktopLyricViewModel desktopLyric,
+        DesktopTrayIconViewModel desktopTrayIcon,
         ILogger<MainViewModel> logger)
     {
         _configProvider = configProvider;
@@ -81,6 +83,8 @@ public partial class MainViewModel : ObservableObject, IDisposable
         Lyrics.UpdateCurrentLyricRequested += OnLyricsUpdateDatabaseRequested;
         Lyrics.UpdateCurrentLyricOffsetRequested += OnLyricsUpdateOffsetMsRequired;
         DesktopLyric = desktopLyric;
+        DesktopLyric.PropertyChanged += OnDesktopLyricPropertyChanged;
+        DesktopTrayIcon = desktopTrayIcon;
         CurrentBackgroundMode = configProvider.GetConfig().UI.Background;
         _sampleRate = 48000; // Studio quality
         _musicPlayer = new MusicPlayer(_sampleRate);
@@ -89,6 +93,25 @@ public partial class MainViewModel : ObservableObject, IDisposable
         SubscribeSmtcEvents();
         RestoreSettingsFromCommandLine();
         _logger.LogInformation("MainViewModel initialized, sample rate: {SampleRate}", _sampleRate);
+    }
+
+    private void OnDesktopLyricPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        switch (e.PropertyName)
+        {
+            case nameof(DesktopLyric.IsDesktopLyricVisible):
+                Settings.SelectedDesktopLyricEnabled = DesktopLyric.IsDesktopLyricVisible;
+                break;
+            case nameof(DesktopLyricViewModel.FontSize):
+                Settings.SelectedDesktopLyricFontSize = DesktopLyric.FontSize;
+                break;
+            case nameof(DesktopLyricViewModel.AuxFontSize):
+                Settings.SelectedDesktopLyricAuxFontSize = DesktopLyric.AuxFontSize;
+                break;
+            case nameof(DesktopLyricViewModel.IsAuxInfoCustomizable):
+                Settings.SelectedDesktopLyricIsAuxInfoCustomizable = DesktopLyric.IsAuxInfoCustomizable;
+                break;
+        }
     }
 
     private void OnRemovePlaylistItemRequested(string filePath)
@@ -184,7 +207,11 @@ public partial class MainViewModel : ObservableObject, IDisposable
     private void RestoreSettingsFromCommandLine()
     {
         _logger.LogInformation("Restoring settings from command line");
-        Volume = _commandLineParser.Volume;
+        Volume = _configProvider.GetConfig().Audio.Volume;
+        DesktopLyric.FontSize = _configProvider.GetConfig().DesktopLyric.DesktopLyricFontSize;
+        DesktopLyric.AuxFontSize = _configProvider.GetConfig().DesktopLyric.DesktopLyricAuxFontSize;
+        DesktopLyric.IsAuxInfoCustomizable = _configProvider.GetConfig().DesktopLyric.IsDesktopLyricAuxCustomizable;
+        DesktopLyric.IsDesktopLyricVisible = _configProvider.GetConfig().DesktopLyric.IsDesktopLyricEnabled;
 
         if (string.IsNullOrEmpty(_commandLineParser.FilePath))
         {
@@ -258,6 +285,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             if (SetProperty(ref field, value))
             {
                 _musicPlayer.SetMasterVolume((float)value);
+                Settings.SelectedVolume = Volume;
             }
         }
     } = 0.5;
@@ -294,6 +322,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     public SettingsViewModel Settings { get; }
 
     public DesktopLyricViewModel DesktopLyric { get; }
+    public DesktopTrayIconViewModel DesktopTrayIcon { get; }
 
     [ObservableProperty]
     public partial UISettings.BackgroundMode CurrentBackgroundMode { get; private set; }
@@ -420,7 +449,6 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
     private void OnSettingChanged(object? sender, SettingChangedEventArgs e)
     {
-        _logger.LogInformation("Setting changed: {SettingName}", e.SettingName);
         if (e.SettingName == nameof(SettingsViewModel.SelectedBackground))
         {
             CurrentBackgroundMode = _configProvider.GetConfig().UI.Background;
@@ -542,6 +570,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
 
             // 坑：UpdateMetadata会清除缩略图，对非NCM文件，FileInit总是晚于AlbumArtInit，导致设置的缩略图被清空
             _smtcService.UpdateTextMetadata(SongTitle, ArtistName);
+            DesktopTrayIcon.TaskBarToolTipText = $"{SongTitle} - {ArtistName}";
 
             _musicPlayer.SetMasterVolume((float)Volume);
             
@@ -975,6 +1004,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
             CurrentTime = "0:00";
             _smtcService.UpdatePlaybackStatus(PlaybackState.Stopped);
             _smtcService.UpdateTextMetadata("Unknown Title", "Unknown Artist");
+            DesktopTrayIcon.TaskBarToolTipText = "WpfMusicPlayer";
             Lyrics.ResetState();
         }
     }

@@ -104,23 +104,24 @@ public partial class DesktopLyricViewModel
     [ObservableProperty] 
     public partial double AuxFontSize { get; set; } = 16;
 
-    private bool _isAuxInfoCustomizable = false;
+    [ObservableProperty]
+    public partial bool IsAuxInfoCustomizable { get; set; }= false;
 
     partial void OnFontSizeChanged(double value)
     {
-        if (!_isAuxInfoCustomizable)
+        if (!IsAuxInfoCustomizable)
             AuxFontSize = value * 2.0 / 3.0;
     }
 
     public void CustomizeAuxInfoFontSize(double value)
     {
-        _isAuxInfoCustomizable = true;
+        IsAuxInfoCustomizable = true;
         AuxFontSize = value;
     }
 
     public void DiscustomizeAuxInfoFontSize()
     {
-        _isAuxInfoCustomizable = false;
+        IsAuxInfoCustomizable = false;
     }
 
     [ObservableProperty]

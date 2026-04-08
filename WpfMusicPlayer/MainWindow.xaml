@@ -125,6 +125,30 @@
                         </Setter>
                     </Style>
                 </Button.Style>
+            </Button><Button Width="46" Height="32" Click="HideApplicationButton_Click"
+                             WindowChrome.IsHitTestVisibleInChrome="True">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="Bg" Background="Transparent">
+                                        <TextBlock Text="&#xE73F;" FontFamily="Segoe MDL2 Assets" FontSize="16"
+                                                   Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Bg" Property="Background" Value="#20FFFFFF"/>
+                                        </Trigger>
+                                        <Trigger Property="IsPressed" Value="True">
+                                            <Setter TargetName="Bg" Property="Background" Value="#30FFFFFF"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </Button.Style>
             </Button>
         </StackPanel>
 

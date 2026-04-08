@@ -21,6 +21,7 @@ namespace WpfMusicPlayer.Models
             }
             
             [XmlElement("channel-type")] public ChannelType Channel { get; set; }
+            [XmlElement("volume")] public double Volume { get; set; } = 1.0;
         }
         
         [XmlElement("ui-settings")]
@@ -53,14 +54,17 @@ namespace WpfMusicPlayer.Models
 
         public class DesktopLyricSettings
         {
+            [XmlElement("desktop-lyric-enabled")]
+            public bool IsDesktopLyricEnabled { get; set; }
+            
             [XmlElement("desktop-lyric-font-size")]
-            public int DesktopLyricFontSize { get; set; }
-            
-            [XmlElement("desktop-lyric-aux-follow-main-line-size")]
-            public bool IsDesktopLyricAuxFollowMainLineSize { get; set; }          
-            
+            public double DesktopLyricFontSize { get; set; } = 24;
+
+            [XmlElement("desktop-lyric-aux-customizable")]
+            public bool IsDesktopLyricAuxCustomizable { get; set; }
+
             [XmlElement("desktop-lyric-aux-font-size")]
-            public int DesktopLyricAuxFontSize { get; set; }
+            public double DesktopLyricAuxFontSize { get; set; } = 18;
         }
     }
 }

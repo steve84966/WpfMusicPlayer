@@ -13,8 +13,6 @@ public interface ICommandLineParser
 
     public bool AutoStart { get; }
 
-    public float Volume { get; }
-
     public ActiveView StartupView { get; }
 
     public string OpenedPlaylistPath { get; }

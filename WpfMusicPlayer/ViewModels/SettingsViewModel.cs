@@ -66,6 +66,56 @@ public class SettingsViewModel : ObservableObject
                 ApplyToConfig();
         }
     }
+    
+    public bool SelectedDesktopLyricEnabled
+    {
+        get;
+        set
+        {
+            if (SetProperty(ref field, value))
+                ApplyToConfig();
+        }
+    }
+
+    public double SelectedDesktopLyricFontSize
+    {
+        get;
+        set
+        {
+            if (SetProperty(ref field, value))
+                ApplyToConfig();
+        }
+    }
+
+    public double SelectedDesktopLyricAuxFontSize
+    {
+        get;
+        set
+        {
+            if (SetProperty(ref field, value))
+                ApplyToConfig();
+        }
+    }
+    
+    public bool SelectedDesktopLyricIsAuxInfoCustomizable
+    {
+        get;
+        set
+        {
+            if (SetProperty(ref field, value))
+                ApplyToConfig();
+        }
+    }
+    
+    public double SelectedVolume 
+    {
+        get;
+        set
+        {
+            if (SetProperty(ref field, value))
+                ApplyToConfig();
+        }
+    }
 
     public Visibility Windows10WarningVisibility => OsVersionHelper.IsWindows11() ? Visibility.Collapsed : Visibility.Visible;
 
@@ -88,6 +138,11 @@ public class SettingsViewModel : ObservableObject
         SelectedBackground = config.UI.Background;
         SelectedChannel = config.Audio.Channel;
         SelectedSampleRate = config.Audio.SampleRate;
+        SelectedVolume = config.Audio.Volume;
+        SelectedDesktopLyricEnabled = config.DesktopLyric.IsDesktopLyricEnabled;
+        SelectedDesktopLyricFontSize = config.DesktopLyric.DesktopLyricFontSize;
+        SelectedDesktopLyricIsAuxInfoCustomizable = config.DesktopLyric.IsDesktopLyricAuxCustomizable;
+        SelectedDesktopLyricAuxFontSize = config.DesktopLyric.DesktopLyricAuxFontSize;
         _isLoading = false;
     }
 
@@ -99,6 +154,11 @@ public class SettingsViewModel : ObservableObject
         config.UI.Background = SelectedBackground;
         config.Audio.Channel = SelectedChannel;
         config.Audio.SampleRate = SelectedSampleRate;
+        config.Audio.Volume = SelectedVolume;
+        config.DesktopLyric.IsDesktopLyricEnabled = SelectedDesktopLyricEnabled;
+        config.DesktopLyric.DesktopLyricFontSize = SelectedDesktopLyricFontSize;
+        config.DesktopLyric.IsDesktopLyricAuxCustomizable = SelectedDesktopLyricIsAuxInfoCustomizable;
+        config.DesktopLyric.DesktopLyricAuxFontSize = SelectedDesktopLyricAuxFontSize;
         _configProvider.WriteFile();
         OnSettingChanged(settingName!);
     }
