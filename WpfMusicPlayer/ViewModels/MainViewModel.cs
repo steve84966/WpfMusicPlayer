@@ -406,34 +406,42 @@ public partial class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public async void SeekToCurrentPosition()
+    public async void SeekToCurrentPosition(float pct,float precision)
     {
         if (!_musicPlayer.IsInitialized()) return;
         var timeInSec = _musicPlayer.GetMusicTimeLength();
-        var targetTime = timeInSec * (float)ProgressValue / (float)ProgressMaximum;
-        var isPlaying = _musicPlayer.IsPlaying();
-        _logger.LogInformation("SeekToCurrentPosition: targetTime={TargetTime}s, isPlaying={IsPlaying}", targetTime, isPlaying);
+        if(pct > 1)
+            pct = 1;
+        if(pct < 0)
+            pct = 0;
+        //var targetTime = timeInSec * (float)ProgressValue / (float)ProgressMaximum;
+        var targetTime = timeInSec * pct;
+        var curTime = _musicPlayer.GetCurrentMusicPosition();
+        var difTime = Math.Abs(targetTime - curTime);
+        var targetdiff = Math.Max(timeInSec * precision, 0.5);//least 500ms
+        if(difTime > targetdiff) {
+            var isPlaying = _musicPlayer.IsPlaying();
+            _logger.LogInformation("SeekToCurrentPosition: targetTime={TargetTime}s, isPlaying={IsPlaying}", targetTime, isPlaying);
 
-        IsDraggingSlider = true;
+            IsDraggingSlider = true;
 
-        await Task.Run(() =>
-        {
-            _musicPlayer.SeekToPosition(targetTime, true);
-        });
+            await Task.Run(() =>
+            {
+                _musicPlayer.SeekToPosition(targetTime, true);
+            });
 
-        if (isPlaying)
-        {
-            _musicPlayer.Start();
+            if(isPlaying) {
+                _musicPlayer.Start();
+            }
+
+            await Task.Delay(200);
+            IsDraggingSlider = false;
+            if(!isPlaying) {
+                ProgressValue = targetTime;
+                CurrentTime = FormatTime(targetTime);
+            }
+            Lyrics.UpdateLyricProgress(targetTime);
         }
-
-        await Task.Delay(200);
-        IsDraggingSlider = false;
-        if (!isPlaying)
-        {
-            ProgressValue = targetTime;
-            CurrentTime = FormatTime(targetTime);
-        }
-        Lyrics.UpdateLyricProgress(targetTime);
     }
 
     public void OnWindowClosed()
