@@ -357,7 +357,7 @@ public partial class MainViewModel : ObservableObject, IDisposable
     };
 
     public List<string> ExtensionList =>
-        _fileDialogService.ExtensionList;
+        _fileDialogService.MscExtList;
 
     // for RebootApplication to build command line args
     public bool IsMusicPlaying => _musicPlayer.IsPlaying();
