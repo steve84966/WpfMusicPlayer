@@ -21,8 +21,8 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Column="0" Text="{Binding CurrentTime}" Foreground="#DDDDDD" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                <Slider Grid.Column="1" Minimum="0" Maximum="{Binding ProgressMaximum}" Value="{Binding ProgressValue, Mode=TwoWay}" VerticalAlignment="Center"
-                        PreviewMouseDown="ProgressSlider_PreviewMouseDown" PreviewMouseUp="ProgressSlider_PreviewMouseUp"/>
+                <Slider Grid.Column="1" Minimum="0" Maximum="{Binding ProgressMaximum}" Value="{Binding ProgressValue, Mode=TwoWay}" VerticalAlignment="Center" IsMoveToPointEnabled="True"
+                        PreviewMouseDown="ProgressSlider_PreviewMouseDown" PreviewMouseUp="ProgressSlider_PreviewMouseUp" />
                 <TextBlock Grid.Column="2" Text="{Binding TotalTime}" Foreground="#DDDDDD" VerticalAlignment="Center" Margin="10,0,0,0"/>
             </Grid>
 

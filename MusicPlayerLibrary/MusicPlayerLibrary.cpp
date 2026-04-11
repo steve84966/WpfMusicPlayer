@@ -83,7 +83,7 @@ inline int MusicPlayerLibrary::MusicPlayerNative::load_audio_context(const CStri
 
 	if (file_extension_in.CompareNoCase(_T("ncm")) == 0 || is_ncm)
 	{
-		// AfxMessageBox(_T("即将尝试解码网易云音乐加密文件。\n本软件不对解密算法可用性和解密结果做保证。"), MB_ICONINFORMATION);
+		
 		CFile* mem_file = nullptr;
 		try
 		{
