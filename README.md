@@ -19,7 +19,7 @@ A simple music player.
 ## Technical stack
 - **Frontend:** WPF / C#  
 - **Backend:** C++/CLI  
-- **Native Libraries:** FFmpeg, OpenSSL, RapidJSON, cpp-base64, kissfft, uchardet, libiconv
+- **Native Libraries:** FFmpeg, OpenSSL, RapidJSON, cpp-base64, kissfft, uchardet, libiconv, dlib
 - **Framework:** .NET 10.0 (Long Term Support)  
 - **Minimum Supported Windows Version:** Windows 10 2004 (build 10.0.19041.0)  
 - **Target Windows Version:** Windows Latest (build 10.0.26100.0)
@@ -32,7 +32,7 @@ A simple music player.
 - Play/pause/stop
 - Seek bar
 - Volume control
-- NLP-based Lrc Parser (support translation, JPN romanization detection)
+- Full ML-based Lrc Parser with high accuracy (support translation, JPN romanization detection)
 - LRC encoding sniffing based on uchardet & libiconv
 - Extended Lyric display (support ESLyric with karaoke effect)
 - Portrait mode & Animated switch

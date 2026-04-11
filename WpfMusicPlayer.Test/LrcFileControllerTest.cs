@@ -438,6 +438,18 @@ public sealed class LrcFileControllerTest
     #endregion
 
     #region Jyutping Parsing
+    [TestMethod]
+    public void ParseLrcStream_ChnWithJyutping_Parsing()
+    {
+        const string lrc = """
+                           [00:06.417]coi san dou coi san dou 
+                           [00:06.417]财神到财神到
+                           [00:08.080]hou san da hou bou 
+                           [00:08.080]好心得好报
+                           """;
+        Assert.AreEqual(0, CreateFromStream(lrc).GetLrcLineAuxIndex(0, LrcAuxiliaryInfo.Romanization));
+        Assert.AreEqual(0, CreateFromStream(lrc).GetLrcLineAuxIndex(1, LrcAuxiliaryInfo.Romanization));
+    }
     #endregion
 
     #region Error handling
@@ -453,18 +465,7 @@ public sealed class LrcFileControllerTest
     }
 
     #endregion
-    [TestMethod]
-    public void ParseLrcStream_ChnWithJyutping_Parsing()
-    {
-        const string lrc = """
-                           [00:06.417]coi san dou coi san dou 
-                           [00:06.417]财神到财神到
-                           [00:08.080]hou san da hou bou 
-                           [00:08.080]好心得好报
-                           """;
-        Assert.AreEqual(0, CreateFromStream(lrc).GetLrcLineAuxIndex(0, LrcAuxiliaryInfo.Romanization));
-        Assert.AreEqual(0, CreateFromStream(lrc).GetLrcLineAuxIndex(1, LrcAuxiliaryInfo.Romanization));
-    }
+    
     #region Dispose
 
     [TestMethod]

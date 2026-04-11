@@ -1,6 +1,29 @@
 ﻿#pragma once
 #include "pch.h"
 
+#include <dlib/svm_threaded.h>
+#include <dlib/dnn.h>
+
+using line_sample_type = dlib::matrix<double, 0, 1>;
+using song_sample_type = dlib::matrix<double>;
+
+constexpr int NUM_CLASSES = 7;
+constexpr int NUM_TYPES = 12;
+
+using line_net_type = dlib::loss_multiclass_log<
+	dlib::fc<NUM_CLASSES,
+	dlib::relu<dlib::fc<64,
+	dlib::relu<dlib::fc<128,
+	dlib::input<line_sample_type>
+	>>>>>>;
+
+using song_net_type = dlib::loss_multiclass_log<
+	dlib::fc<NUM_TYPES,
+	dlib::relu<dlib::fc<32,
+	dlib::relu<dlib::fc<64,
+	dlib::input<song_sample_type>
+	>>>>>>;
+
 namespace MusicPlayerLibrary
 {
     
@@ -27,17 +50,43 @@ class LrcLanguageHelper
 public:
 	enum class LanguageType
 	{
-		zh, en, jp, kr, others
+		zh, en, jp, kr, jyut, roma, onomatopoeia
 	};
 	
-	enum class DetectRomajiUseAlgorithm
+	enum class LanguageClassification
 	{
-		Romaji, Jyutping
+		zh_only,
+		jp_only,
+		kr_only,
+		en_only,
+		jp_zh_trans,
+		jp_roma,
+		en_zh_trans,
+		kr_zh_trans,
+		kr_roma,
+		zh_jyut,
+		jp_zh_trans_roma,
+		kr_zh_trans_roma
 	};
-
-	static void detect_eng_vs_jpn_romaji_prob(const CString& input, float* eng_prob, float* jpn_romaji_prob, DetectRomajiUseAlgorithm alg = DetectRomajiUseAlgorithm::Romaji);
-	static LanguageType detect_language_type(const CString& input_trimmed, float* probability = nullptr);
-	static float detect_is_jyutping(const CString& input);
+	
+	line_net_type line_net_reasoning;
+	std::unordered_map<std::string, int> line_vocab_reasoning;
+	song_net_type song_net_reasoning;
+	// MSTest运行在多线程上，避免并发测试导致神经网络被破坏
+	std::mutex dlib_mutex;
+private:
+	LrcLanguageHelper();
+public:
+	LrcLanguageHelper& operator=(const LrcLanguageHelper&) = delete;
+	LrcLanguageHelper(const LrcLanguageHelper&) = delete;
+	LrcLanguageHelper(LrcLanguageHelper&&) = delete;
+	LrcLanguageHelper& operator=(LrcLanguageHelper&&) = delete;
+	std::string lyric_type_to_std_string(LanguageType type);
+	std::vector<double> extract_line_features(const CString& text, const std::unordered_map<std::string, int>& vocab);
+	song_sample_type extract_song_features(const std::vector<std::string>& seq);
+	LanguageClassification detect_song_language_classification(const CStringArray& lyrics);
+	LanguageType detect_line_language_type(const CString& input_trimmed);
+	static LrcLanguageHelper& GetSingleton();
 };
 
 class LrcAbstractNode {
@@ -98,6 +147,7 @@ public:
 * for display lrc with translation or romanization
 */
 class LrcMultiNode : virtual public LrcAbstractNode {
+	friend class LrcFileControllerNative;
 	int str_count;
 	CSimpleArray<CString> lrc_texts;
 	CSimpleArray<LrcAuxiliaryInfoNative> aux_infos;
@@ -105,7 +155,7 @@ class LrcMultiNode : virtual public LrcAbstractNode {
 
 public:
 
-	LrcMultiNode(int t, const CSimpleArray<CString>& texts);
+	LrcMultiNode(int t, const CSimpleArray<CString>& texts, LrcLanguageHelper::LanguageClassification classification);
 
 	[[nodiscard]] int get_lrc_str_count() const override {
 		return str_count;
@@ -137,6 +187,10 @@ public:
 	[[nodiscard]] float get_lrc_percentage(float current_timestamp) const override
 	{
 		return 1.0f;
+	}
+protected:
+	void set_auxiliary_info_at(int index, LrcAuxiliaryInfoNative info) {
+		aux_infos[index] = info;
 	}
 };
 
@@ -184,7 +238,7 @@ class LrcProgressMultiNode final:
 	public LrcProgressNode, public LrcMultiNode
 {
 public:
-	LrcProgressMultiNode(int t, const CString& str_1, const CSimpleArray<CString>& str_arr_2);
+	LrcProgressMultiNode(int t, const CString& str_1, const CSimpleArray<CString>& str_arr_2, LrcLanguageHelper::LanguageClassification classification);
 	[[nodiscard]] int get_lrc_str_count() const override
 	{
 		return LrcMultiNode::get_lrc_str_count();
@@ -213,7 +267,7 @@ public:
 
 class LrcNodeFactory {
 public:
-	static LrcAbstractNode* CreateLrcNode(int time_ms, const CSimpleArray<CString>& lrc_texts) {
+	static LrcAbstractNode* CreateLrcNode(int time_ms, const CSimpleArray<CString>& lrc_texts, LrcLanguageHelper::LanguageClassification classification) {
 		auto ifLrcContainsControllerNode = [](const CString& lrc_text)
 		{
 			const auto last_index = lrc_text.GetLength() - 1;
@@ -227,19 +281,24 @@ public:
 		}
 		if (lrc_texts.GetSize() > 1) {
 			if (ifLrcContainsControllerNode(lrc_texts[0]))
-				return new LrcProgressMultiNode(time_ms, lrc_texts[0], lrc_texts);
-			return new LrcMultiNode(time_ms, lrc_texts);
+				return new LrcProgressMultiNode(time_ms, lrc_texts[0], lrc_texts, classification);
+			return new LrcMultiNode(time_ms, lrc_texts, classification);
 		}
 		return nullptr;
 	}
+};
+
+struct LrcLanguageInfo {
+	LrcLanguageHelper::LanguageType main_language;
+	bool translation_enabled;
+	bool romanization_enabled;
 };
 
 /*
 * internal helper of CLrcManagerWnd, perform lyric management
 */
 class LrcFileControllerNative {
-	friend class CLrcManagerWnd;
-
+	LrcLanguageHelper::LanguageClassification main_classification = LrcLanguageHelper::LanguageClassification::en_only;
 	CAtlArray<LrcAbstractNode*> lrc_nodes;
 	int time_stamp_ms = 0, lrc_offset_ms = 0;
 	size_t cur_lrc_node_index = 0;
@@ -286,6 +345,9 @@ public:
 	bool is_percentage_enabled(int index) { return lrc_nodes[index]->is_lrc_percentage_enabled(); }
 	float get_lrc_percentage(int index) { return lrc_nodes[index]->get_lrc_percentage((time_stamp_ms - lrc_offset_ms) / 1000.0f); }
 	int get_lrc_offset() { return lrc_offset_ms; }
+
+	LrcLanguageInfo scan_lrc_main_language_type();
+	void correct_lrc_language_info(LrcLanguageInfo info);
 
 	// static helpers
 	static LrcMetadataTypeNative get_metadata_type(const CString& str);

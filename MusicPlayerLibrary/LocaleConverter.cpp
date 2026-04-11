@@ -68,6 +68,27 @@ CString MusicPlayerLibrary::LocaleConverterNative::GetUtf16StringFromUtf8String(
     return file_content_w;
 }
 
+std::string MusicPlayerLibrary::LocaleConverterNative::GetUtf8StringStdFromUtf16String(const CString& input)
+{
+    int utf8_len = WideCharToMultiByte(
+        CP_UTF8, 0,
+        input, -1,
+        nullptr, 0,
+        nullptr, nullptr
+    );
+
+    CStringA utf8_str;
+    WideCharToMultiByte(
+        CP_UTF8, 0,
+        input, -1,
+        utf8_str.GetBuffer(utf8_len), utf8_len,
+        nullptr, nullptr
+    );
+    utf8_str.ReleaseBuffer();
+
+    return utf8_str.GetString();
+}
+
 System::String^ MusicPlayerLibrary::LocaleConverter::GetSystemStringFromBytes(array<byte>^ input)
 {
     if (input == nullptr || input->Length == 0)

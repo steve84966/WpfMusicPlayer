@@ -1,12 +1,14 @@
 ﻿#include "pch.h"
 #include "LrcFileController.h"
 #include "LocaleConverter.h"
+#include <regex>
 
 #include <msclr/marshal_cppstd.h>
 #include <vcclr.h>
 
 using namespace MusicPlayerLibrary;
 
+// 没用了。至少证明我在规则匹配上努力过。但是一直打补丁永远不是解决问题的方法。
 bool IsRomajiSyllableToken(const CStringA& token)
 {
     static const std::initializer_list<CStringA> romaji_tokens = {
@@ -127,435 +129,431 @@ static const std::initializer_list<CString> chinese_aux_lyric_start = {
     _T("编曲:"), _T("编曲：")
 };
 
-LrcMultiNode::LrcMultiNode(int t, const CSimpleArray<CString>& texts) :
+LrcMultiNode::LrcMultiNode(int t, const CSimpleArray<CString>& texts, LrcLanguageHelper::LanguageClassification classification) :
     LrcAbstractNode(t), str_count(texts.GetSize()), lrc_texts(texts)
 {
     for (int i = 0; i < str_count; ++i)
     {
-        lang_types.Add(LrcLanguageHelper::detect_language_type(texts[i]));
-        aux_infos.Add(LrcAuxiliaryInfoNative::Lyric);
+        lang_types.Add(LrcLanguageHelper::GetSingleton().detect_line_language_type(texts[i]));
+        aux_infos.Add(LrcAuxiliaryInfoNative::Ignored);
     }
     int jp_index = lang_types.Find(LrcLanguageHelper::LanguageType::jp), 
         kr_index = lang_types.Find(LrcLanguageHelper::LanguageType::kr),
         eng_index = lang_types.Find(LrcLanguageHelper::LanguageType::en),
-        zh_index = lang_types.Find(LrcLanguageHelper::LanguageType::zh);
-    if (jp_index != -1)
+        zh_index = lang_types.Find(LrcLanguageHelper::LanguageType::zh),
+        jyut_index = lang_types.Find(LrcLanguageHelper::LanguageType::jyut),
+        roma_index = lang_types.Find(LrcLanguageHelper::LanguageType::roma),
+        onomatopoeia_index = lang_types.Find(LrcLanguageHelper::LanguageType::onomatopoeia);
+    using LC = LrcLanguageHelper::LanguageClassification;
+    auto assign_with_language = [&](int index, LrcAuxiliaryInfoNative type)
     {
-        aux_infos[jp_index] = LrcAuxiliaryInfoNative::Lyric;
-        int jp_index_2;
-        for (jp_index_2 = jp_index + 1; jp_index_2 < str_count; ++jp_index_2) {
-            if (lang_types[jp_index_2] == LrcLanguageHelper::LanguageType::jp) {
-                break;
-            }
-        }
-        if (jp_index_2 != str_count) {
-            // 一般是罗马音置前导致的误判，设置第二个为歌词
-            aux_infos[jp_index_2] = LrcAuxiliaryInfoNative::Lyric;
-            aux_infos[jp_index] = LrcAuxiliaryInfoNative::Ignored;
-        }
-        if (kr_index != -1)
+        if (index != -1) aux_infos[index] = type;
+    };
+    switch (classification)
+    {
+    case LC::en_only:
         {
-            ATLTRACE(_T("warn: jp & kr mix, ignoring kr line\n"));
-            aux_infos[kr_index] = LrcAuxiliaryInfoNative::Ignored;
+            assign_with_language(eng_index, LrcAuxiliaryInfoNative::Lyric);
+            break;
         }
-    }
-    if (jp_index == -1 && kr_index != -1)
-    {
-        aux_infos[kr_index] = LrcAuxiliaryInfoNative::Lyric;
-    }
-
-
-    if (zh_index != -1)
-    {
-        for (int i = zh_index + 1; i < str_count; ++i)
+    case LC::jp_only:
         {
-            if (lang_types[i] == LrcLanguageHelper::LanguageType::zh)
+            assign_with_language(jp_index, LrcAuxiliaryInfoNative::Lyric);
+            break;
+        }
+    case LC::zh_only:
+        {
+            assign_with_language(zh_index, LrcAuxiliaryInfoNative::Lyric);
+            break;
+        }
+    case LC::kr_only:
+        {
+            assign_with_language(kr_index, LrcAuxiliaryInfoNative::Lyric); 
+            break;
+        }
+    case LC::zh_jyut:
+        {
+            assign_with_language(zh_index, LrcAuxiliaryInfoNative::Lyric);
+            assign_with_language(jyut_index, LrcAuxiliaryInfoNative::Romanization);
+            if (jyut_index == -1)
             {
-                aux_infos[i] = LrcAuxiliaryInfoNative::Translation; // 无法判断中文和日文，假定后出现的为翻译
-                lang_types[zh_index] = LrcLanguageHelper::LanguageType::jp;
-				aux_infos[zh_index] = LrcAuxiliaryInfoNative::Lyric;
-				jp_index = zh_index;
-				zh_index = i;
-                break;
+                if (eng_index != -1)
+                    assign_with_language(eng_index, LrcAuxiliaryInfoNative::Romanization);
+                if (roma_index != -1)
+                    assign_with_language(roma_index, LrcAuxiliaryInfoNative::Romanization);
+                else
+                    assign_with_language(onomatopoeia_index, LrcAuxiliaryInfoNative::Romanization);
             }
+            break;
         }
-        if (jp_index != -1 || kr_index != -1 || eng_index != -1 && lang_types[zh_index] == LrcLanguageHelper::LanguageType::zh)
+    case LC::jp_roma:
         {
-//            ATLTRACE(_T("info: translation hit, line %s\n"), texts[zh_index].GetString());
-            // 如果以“词：”/“词:”/“曲：”/“曲:”/“作词：”/“作词:”/“作曲：”/“作曲:”开头，视中文为歌词，将英语移动至翻译/罗马音
-            aux_infos[zh_index] = LrcAuxiliaryInfoNative::Translation;
-            for (const auto& chn_start: chinese_aux_lyric_start)
+            assign_with_language(jp_index, LrcAuxiliaryInfoNative::Lyric);
+            assign_with_language(roma_index, LrcAuxiliaryInfoNative::Romanization);
+            if (roma_index == -1)
             {
-                if (lrc_texts[zh_index].Find(chn_start) == 0)
+                assign_with_language(onomatopoeia_index, LrcAuxiliaryInfoNative::Romanization);
+            }
+            if (jp_index == -1)
+            {
+                if (zh_index != -1)
                 {
-                    aux_infos[zh_index] = LrcAuxiliaryInfoNative::Lyric;
-                    if (eng_index != -1)
+                    assign_with_language(zh_index, LrcAuxiliaryInfoNative::Lyric);
+                }
+                else if (eng_index != -1)
+                {
+                    assign_with_language(eng_index, LrcAuxiliaryInfoNative::Lyric);
+                }
+            }
+            break;
+        }
+    case LC::kr_roma:
+        {
+            assign_with_language(kr_index, LrcAuxiliaryInfoNative::Lyric);
+            assign_with_language(roma_index, LrcAuxiliaryInfoNative::Romanization);
+            if (kr_index == -1)
+            {
+                if (zh_index != -1)
+                {
+                    assign_with_language(zh_index, LrcAuxiliaryInfoNative::Lyric);
+                }
+                else if (eng_index != -1)
+                {
+                    assign_with_language(eng_index, LrcAuxiliaryInfoNative::Lyric);
+                }
+            }
+            break;
+        }
+    case LC::en_zh_trans:
+        {
+            assign_with_language(eng_index, LrcAuxiliaryInfoNative::Lyric);
+            assign_with_language(zh_index, LrcAuxiliaryInfoNative::Translation);
+            if (eng_index == -1)
+            {
+                if (jp_index != -1)
+                    assign_with_language(jp_index, LrcAuxiliaryInfoNative::Lyric);
+                else if (kr_index != -1)
+                    assign_with_language(kr_index, LrcAuxiliaryInfoNative::Lyric);
+                else if (jyut_index != -1)
+                    assign_with_language(jyut_index, LrcAuxiliaryInfoNative::Lyric);
+                else
+                    assign_with_language(onomatopoeia_index, LrcAuxiliaryInfoNative::Lyric);
+            }
+            break;
+        }
+    case LC::jp_zh_trans:
+        {
+            assign_with_language(jp_index, LrcAuxiliaryInfoNative::Lyric);
+            assign_with_language(zh_index, LrcAuxiliaryInfoNative::Translation);
+            if (jp_index == -1)
+            {
+                if (zh_index != -1)
+                {
+                    int zh_index_2 = -1;
+                    for (int i = zh_index + 1; i < texts.GetSize(); i++)
                     {
-                        float eng_prob, romaji_prob;
-                        LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index], &eng_prob, &romaji_prob);
-                        if (eng_prob < romaji_prob)
+                        if (lang_types[i] == LrcLanguageHelper::LanguageType::zh)
                         {
-                            aux_infos[eng_index] = LrcAuxiliaryInfoNative::Romanization;
-                        }
-                        else
-                        {
-                            aux_infos[eng_index] = LrcAuxiliaryInfoNative::Translation;
+                            zh_index_2 = i; break;
                         }
                     }
-                    break;
+                    if (zh_index_2 != -1)
+                    {
+                        assign_with_language(zh_index, LrcAuxiliaryInfoNative::Lyric);
+                        assign_with_language(zh_index_2, LrcAuxiliaryInfoNative::Translation);
+                    }
+                    else if (eng_index != -1)
+                    {
+                        assign_with_language(eng_index, LrcAuxiliaryInfoNative::Lyric);
+                        assign_with_language(zh_index, LrcAuxiliaryInfoNative::Translation);
+                    }
+                    else
+                    {
+                        assign_with_language(zh_index, LrcAuxiliaryInfoNative::Lyric);
+                    }
                 }
-            }
-        }
-        else
-        {
-            aux_infos[zh_index] = LrcAuxiliaryInfoNative::Lyric;
-        }
-    }
-
-    if (eng_index != -1)
-    {
-        float eng_prob, romaji_prob;
-        // 更改为has_cjk_lyric 处理汉语拼音和粤拼
-        const bool has_cjk_lyric = jp_index != -1 || kr_index != -1 || zh_index != -1;
-        const bool has_zh_only_pair = jp_index == -1 && kr_index == -1 && zh_index != -1;
-        const bool is_strong_separated_romaji = has_zh_only_pair && IsStrongSeparatedRomaji(texts[eng_index]);
-        if (has_zh_only_pair) {
-            float eng_prob_2, romaji_prob_2;
-            LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index], &eng_prob, &romaji_prob, LrcLanguageHelper::DetectRomajiUseAlgorithm::Jyutping);
-            LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index], &eng_prob_2, &romaji_prob_2, LrcLanguageHelper::DetectRomajiUseAlgorithm::Romaji);
-            if (romaji_prob_2 > romaji_prob) {
-                eng_prob = eng_prob_2; romaji_prob = romaji_prob_2;
-                // 到底是谁想出的把曲罗马化成kyo ku的，不会写可以不要写行不，还要我做两次检测取置信度高的
-            }
-        }
-        else
-            LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index], &eng_prob, &romaji_prob);
-        if (eng_prob > romaji_prob)
-        {
-            aux_infos[eng_index] = LrcAuxiliaryInfoNative::Lyric;
-        }
-        else if (eng_prob < romaji_prob && (has_cjk_lyric || is_strong_separated_romaji))
-        {
-//            ATLTRACE(_T("info: romanization hit, line %s\n"), texts[eng_index].GetString());
-            aux_infos[eng_index] = LrcAuxiliaryInfoNative::Romanization;
-            if (is_strong_separated_romaji ||
-                (jp_index == -1 && kr_index == -1 && zh_index != -1))
-            {
-                // 坑：英语实际为罗马音，中文应为歌词正文而非翻译
-                // 注意此处要检查是否为强分隔罗马音，避免长得像英语的被一棒子打死
-                // 只有中文的情况下，汉拼和粤拼作为罗马音存在，将中文行纠正为歌词
-                aux_infos[zh_index] = LrcAuxiliaryInfoNative::Lyric;
-            }
-        }
-        else if (jp_index != -1 && kr_index != -1)
-        {
-            ATLTRACE(_T("warn: unknown romaji, ignoring eng line: %s\n"), texts[eng_index].GetString());
-            aux_infos[eng_index] = LrcAuxiliaryInfoNative::Ignored;
-        }
-        int eng_index_2;
-        for (eng_index_2 = eng_index + 1; eng_index_2 < str_count; ++eng_index_2) 
-        {
-            if (lang_types[eng_index_2] == LrcLanguageHelper::LanguageType::en) 
-            {
-                break;
-            }
-        }
-        if (eng_index_2 < str_count &&
-            zh_index == -1 && jp_index == -1 && kr_index == -1) 
-        {
-            // 哦真的牛批 这儿还要加一组强匹配 还有被漏到英文里的漏网之鱼
-            for (const auto& chn_start: chinese_aux_lyric_start)
-            {
-                if (texts[eng_index].Find(chn_start) == 0)
+                else if (eng_index != -1)
                 {
-                    aux_infos[eng_index] = LrcAuxiliaryInfoNative::Lyric;
-                    aux_infos[eng_index_2] = LrcAuxiliaryInfoNative::Romanization;
-                    return;
+                    assign_with_language(eng_index, LrcAuxiliaryInfoNative::Lyric);
                 }
-            }
-            for (const auto& chn_start: chinese_aux_lyric_start)
-            {
-                if (texts[eng_index_2].Find(chn_start) == 0)
+                else
                 {
-                    aux_infos[eng_index_2] = LrcAuxiliaryInfoNative::Lyric;
-                    aux_infos[eng_index] = LrcAuxiliaryInfoNative::Romanization;
-                    return;
+                    assign_with_language(onomatopoeia_index, LrcAuxiliaryInfoNative::Romanization);
                 }
             }
-            float eng_prob_en_detect, romaji_prob_en_detect;
-            LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index], &eng_prob_en_detect, &romaji_prob_en_detect);
-            float eng_prob_en_detect_2, romaji_prob_en_detect_2;
-            LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(texts[eng_index_2], &eng_prob_en_detect_2, &romaji_prob_en_detect_2);
-            if (romaji_prob_en_detect_2 > romaji_prob_en_detect) 
-            {
-                // eng_index是被流放的歌词
-                aux_infos[eng_index] = LrcAuxiliaryInfoNative::Lyric;
-                aux_infos[eng_index_2] = LrcAuxiliaryInfoNative::Romanization;
-            }
-            else
-            {
-                aux_infos[eng_index_2] = LrcAuxiliaryInfoNative::Lyric;
-                aux_infos[eng_index] = LrcAuxiliaryInfoNative::Romanization;
-            }
+            break;
         }
+    case LC::kr_zh_trans:
+        {
+            assign_with_language(kr_index, LrcAuxiliaryInfoNative::Lyric);
+            assign_with_language(zh_index, LrcAuxiliaryInfoNative::Translation);
+            if (kr_index == -1)
+            {
+                if (zh_index != -1)
+                {
+                    assign_with_language(zh_index, LrcAuxiliaryInfoNative::Lyric);
+                }
+                else if (eng_index != -1)
+                {
+                    assign_with_language(eng_index, LrcAuxiliaryInfoNative::Lyric);
+                }
+                else
+                {
+                    assign_with_language(onomatopoeia_index, LrcAuxiliaryInfoNative::Romanization);
+                }
+            }
+            break;
+        }
+    case LC::jp_zh_trans_roma:
+        {
+            assign_with_language(jp_index, LrcAuxiliaryInfoNative::Lyric);
+            assign_with_language(zh_index, LrcAuxiliaryInfoNative::Translation);
+            assign_with_language(roma_index, LrcAuxiliaryInfoNative::Romanization);
+            if (jp_index == -1)
+            {
+                if (zh_index != -1)
+                {
+                    int zh_index_2 = -1;
+                    for (int i = zh_index + 1; i < texts.GetSize(); i++)
+                    {
+                        if (lang_types[i] == LrcLanguageHelper::LanguageType::zh)
+                        {
+                            zh_index_2 = i; break;
+                        }
+                    }
+                    if (zh_index_2 != -1)
+                    {
+                        assign_with_language(zh_index, LrcAuxiliaryInfoNative::Lyric);
+                        assign_with_language(zh_index_2, LrcAuxiliaryInfoNative::Translation);
+                    }
+                    else
+                        assign_with_language(zh_index, LrcAuxiliaryInfoNative::Lyric);
+                    if (roma_index == -1)
+                    {
+                        if (eng_index != -1)
+                            assign_with_language(eng_index, LrcAuxiliaryInfoNative::Romanization);
+                        else
+                            assign_with_language(onomatopoeia_index, LrcAuxiliaryInfoNative::Romanization);
+                    }
+                }
+                else if (eng_index != -1)
+                {
+                    assign_with_language(eng_index, LrcAuxiliaryInfoNative::Lyric);
+                    assign_with_language(onomatopoeia_index, LrcAuxiliaryInfoNative::Romanization);
+                }
+            }
+            else if (roma_index == -1)
+            {
+                if (eng_index != -1)
+                    assign_with_language(eng_index, LrcAuxiliaryInfoNative::Romanization);
+                else
+                    assign_with_language(onomatopoeia_index, LrcAuxiliaryInfoNative::Romanization);
+            }
+            break;
+        }
+    case LC::kr_zh_trans_roma:
+        {
+            assign_with_language(kr_index, LrcAuxiliaryInfoNative::Lyric);
+            assign_with_language(zh_index, LrcAuxiliaryInfoNative::Translation);
+            assign_with_language(roma_index, LrcAuxiliaryInfoNative::Romanization);
+            if (kr_index == -1)
+            {
+                if (zh_index != -1)
+                {
+                    assign_with_language(zh_index, LrcAuxiliaryInfoNative::Lyric);
+                }
+                else if (eng_index != -1)
+                {
+                    assign_with_language(eng_index, LrcAuxiliaryInfoNative::Lyric);
+                }
+            }
+            if (roma_index == -1)
+            {
+                assign_with_language(onomatopoeia_index, LrcAuxiliaryInfoNative::Romanization);
+            }
+            break;
+        }
+    default:
+        break;
     }
 }
 
-void LrcLanguageHelper::detect_eng_vs_jpn_romaji_prob(const CString& input, float* eng_prob, float* jpn_romaji_prob, DetectRomajiUseAlgorithm alg)
+LrcLanguageHelper::LrcLanguageHelper()
 {
-    CString lower = input;
-    lower.MakeLower();
-    CStringA str{CT2A(lower)};
-    static const std::initializer_list<CStringA> romaji_syllables = {
-        // 五十音图（去掉单元音，因为也同时包含在英语中）
-        "ka", "ki", "ku", "ke", "ko", "sa", "shi", "su", "se", "so",
-        "ta", "chi", "tsu", "te", "to", "na", "ni", "nu", "ne", "no",
-        "ha", "hi", "fu", "he", "ho", "ma", "mi", "mu", "me", "mo",
-        "ya", "yu", "yo", "ra", "ri", "ru", "re", "ro", "wa", "wo", "n"
-    };
-    static const std::initializer_list<CStringA> english_clusters = {
-        // 常见英语辅音组合
-        "th", "sh", "ph", "bl", "cl", "str", "spr", "pr", "tr", "dr"
-    };
-    
-    if (alg == DetectRomajiUseAlgorithm::Jyutping)
+    dlib::deserialize("lyric_lang_mlp.dat") >> line_net_reasoning >> line_vocab_reasoning;
+    dlib::deserialize("song_structure_mlp.dat") >> song_net_reasoning;
+}
+
+std::string LrcLanguageHelper::lyric_type_to_std_string(LanguageType type)
+{
+    switch (type)
     {
-        float jyutping_confidence = detect_is_jyutping(input);
-        *jpn_romaji_prob = jyutping_confidence;
-        *eng_prob = 1.0f - jyutping_confidence;
-        return;
+    case LanguageType::zh: return "zh";
+    case LanguageType::en: return "en";
+    case LanguageType::jp: return "jp";
+    case LanguageType::kr: return "kr";
+    case LanguageType::jyut: return "jyut";
+    case LanguageType::roma: return "roma";
+    default: return "onomatopoeia";
     }
+}
 
-    int romaji_score = 0;
-    int english_score = 0;
-    float romaji_prob_out, eng_prob_out;
+std::vector<double> LrcLanguageHelper::extract_line_features(const CString& text_utf16,
+                                                             const std::unordered_map<std::string, int>& vocab)
+{
+    std::string text = LocaleConverterNative::GetUtf8StringStdFromUtf16String(text_utf16);
+    std::vector x(vocab.size(), 0.0);
 
-    for (auto& syl : romaji_syllables)
-        if (str.Find(syl) != -1) romaji_score++;
-    for (auto& cl : english_clusters)
-        if (str.Find(cl) != -1) english_score++;
-
-    int vowels = 0, consonants = 0;
-    for (int i = 0; i < str.GetLength(); i++)
+    for (size_t i = 0; i < text.size(); ++i)
     {
-        if (unsigned char c = str[i]; isalpha(c))
+        for (int n = 1; n <= 3; ++n)
         {
-            if (c == 'a' || c == 'e' || c == 'i' || c == 'o' || c == 'u')
-                vowels++;
-            else
-                consonants++;
+            if (i + n > text.size()) continue;
+            std::string gram = text.substr(i, n);
+            auto it = vocab.find(gram);
+            if (it != vocab.end())
+                x[it->second] += 1.0;
         }
     }
-    double vowel_ratio = vowels + consonants > 0 ? (double)vowels / (vowels + consonants) : 0.0;
-    if (vowel_ratio > 0.45) romaji_score++;
-    else english_score++;
-
-    if (auto total = static_cast<float>(romaji_score + english_score); total == 0)
-    { // NOLINT(*-use-auto)
-        eng_prob_out = 0.5f;
-        romaji_prob_out = 0.5f;
-    }
-    else
-    {
-        eng_prob_out = (float)english_score / total;
-        romaji_prob_out = (float)romaji_score / total;
-    }
-    if (fabs(eng_prob_out - romaji_prob_out) < 1e-6) 
-    {
-        eng_prob_out = 0.f;
-        romaji_prob_out = 1.f;
-    }
-    *eng_prob = eng_prob_out;
-    *jpn_romaji_prob = romaji_prob_out;
+    return x;
 }
 
 LrcLanguageHelper::LanguageType
-LrcLanguageHelper::detect_language_type(const CString& input, float* probability)
+LrcLanguageHelper::detect_line_language_type(const CString& input)
 {
-    int zh = 0, jp = 0, kr = 0, en = 0;
-    for (int i = 0; i < input.GetLength(); ++i)
+    auto feat = extract_line_features(input, line_vocab_reasoning);
+    line_sample_type m(feat.size());
+    for (size_t i = 0; i < feat.size(); ++i)
+        m(i) = feat[i];
+    std::lock_guard lock(dlib_mutex);
+    switch (int label_id = line_net_reasoning(m); label_id)
     {
-        if (wchar_t ch = input[i]; ch >= 0x4E00 && ch <= 0x9FFF) // zh character
-            zh++;
-        else if ((ch >= 0x3040 && ch <= 0x309F) || // hiragana
-            (ch >= 0x30A0 && ch <= 0x30FF)) // katakana
-            jp++;
-        else if (ch >= 0xAC00 && ch <= 0xD7AF) // korean
-            kr++;
-        else if (ch <= 0x007F) // ANSI character, english
-            en++;
+    case 0: return LanguageType::zh;
+    case 1: return LanguageType::jp;
+    case 2: return LanguageType::kr;
+    case 3: return LanguageType::en;
+    case 4: return LanguageType::jyut;
+    case 5: return LanguageType::roma;
+    case 6: default: return LanguageType::onomatopoeia;
     }
-
-    float length = static_cast<float>(zh + jp + kr + en); // NOLINT(*-use-auto)
-    if (length == 0) return LanguageType::others;
-
-    float zh_score = static_cast<float>(zh); // NOLINT(*-use-auto)
-    float jp_score = static_cast<float>(jp) * 2.f + static_cast<float>(zh) * 0.5f; // 日语中包含部分汉字，对假名进行加权
-    float kr_score = static_cast<float>(kr); // NOLINT(*-use-auto)
-    float en_score = static_cast<float>(en); // NOLINT(*-use-auto)
-
-    auto write_prob = [&input, probability](const CString& out_type, float out_prob)
-    {
-        if (probability) *probability = out_prob;
-//        ATLTRACE(_T("info: line %s, type = %s, max prob = %f\n"),
-//                 input.GetString(), out_type.GetString(), out_prob);
-    };
-
-    if (zh > 0 && jp > 0)
-    {
-        write_prob(_T("jp"), jp_score / length);
-        return LanguageType::jp;
-    }
-
-    if (zh > 0 && en > 0)
-    {
-        // 当英文字母占比小于0.50时，直接判定为中文
-        float en_ratio = (float)en / (zh + en);
-        if (en_ratio < 0.50f) {
-            write_prob(_T("zh"), zh_score / length);
-            return LanguageType::zh;
-        }
-        // 过滤非英文字符
-        CString eng_str;
-        for (int i = 0; i < input.GetLength(); ++i) {
-            if (wchar_t ch = input[i]; ch <= 0x007F)
-                eng_str.AppendChar(ch);
-        }
-        float eng_prob, romaji_prob;
-        // 允许罗马音内包含部分中文字符，所以进行前置判断
-        detect_eng_vs_jpn_romaji_prob(eng_str, &eng_prob, &romaji_prob);
-        // 罗马音单音节最大长度为3，超过3则判断其中是否包含空格，包含空格再按罗马音处理
-        if (eng_prob < romaji_prob && (eng_str.GetLength() <= 3 || eng_str.Find(_T(' ')) != -1)) {
-            write_prob(_T("en"), en_score / length);
-            return LanguageType::en;
-        }
-        write_prob(_T("zh"), zh_score / length);
-        return LanguageType::zh;
-    }
-
-	if (kr > 0 && en > 0)
-    {
-        write_prob(_T("kr"), kr_score / length);
-        return LanguageType::kr;
-    }
-
-    if (jp > 0 && en > 0) {
-        write_prob(_T("jp"), jp_score / length);
-        return LanguageType::jp;
-    }
-
-    if (zh_score > jp_score && zh_score > en_score && zh_score > kr_score)
-    {
-        write_prob(_T("zh"), zh_score / length);
-        return LanguageType::zh;
-    }
-    if (jp_score > zh_score && jp_score > en_score && jp_score > kr_score)
-    {
-        write_prob(_T("jp"), jp_score / length);
-        return LanguageType::jp;
-    }
-    if (en_score > jp_score && en_score > kr_score && en_score > zh_score)
-    {
-        write_prob(_T("en"), en_score / length);
-        return LanguageType::en;
-    }
-    if (kr_score > zh_score && kr_score > en_score && kr_score > jp_score)
-    {
-        write_prob(_T("kr"), kr_score / length);
-        return LanguageType::kr;
-    }
-    return LanguageType::others;
 }
 
-// 最长匹配列表中的token
-CStringA match_from_list(const CStringA& s, int pos,
-                         const std::initializer_list<CStringA>& list) {
-    CStringA best, input = s;
-    for (auto& tk : list) {
-        int len = tk.GetLength();
-        if (pos + len <= input.GetLength() &&
-            strncmp(input.Mid(pos, len), tk, len) == 0) 
-        {
-            if (len > best.GetLength()) best = tk;
-        }
+song_sample_type 
+LrcLanguageHelper::extract_song_features(const std::vector<std::string>& seq)
+{
+    const int LANGS = 7; // zh jp kr en jyut roma ono
+    song_sample_type feat(67, 1); 
+    feat = 0;
+
+    // 语言计数
+    std::vector count(LANGS, 0);
+    for (auto& s : seq)
+    {
+        if (s == "zh") count[0]++;
+        else if (s == "jp") count[1]++;
+        else if (s == "kr") count[2]++;
+        else if (s == "en") count[3]++;
+        else if (s == "jyut") count[4]++;
+        else if (s == "roma") count[5]++;
+        else count[6]++; // onomatopoeia
     }
-    return best;
+
+    int idx = 0;
+
+    // 语言计数（7维）
+    for (int i = 0; i < LANGS; i++)
+        feat(idx++) = count[i];
+
+    // 语言比例（7维）
+    double total = seq.size();
+    for (int i = 0; i < LANGS; i++)
+        feat(idx++) = count[i] / total;
+
+    // bigram矩阵（49维）
+    std::vector trans(LANGS, std::vector(LANGS, 0));
+    for (size_t i = 1; i < seq.size(); i++)
+    {
+        auto prev = seq[i - 1];
+        auto curr = seq[i];
+
+        auto id = [&](const std::string& s) {
+            if (s == "zh") return 0;
+            if (s == "jp") return 1;
+            if (s == "kr") return 2;
+            if (s == "en") return 3;
+            if (s == "jyut") return 4;
+            if (s == "roma") return 5;
+            return 6;
+        };
+
+        trans[id(prev)][id(curr)]++;
+    }
+
+    for (int i = 0; i < LANGS; i++)
+        for (int j = 0; j < LANGS; j++)
+            feat(idx++) = trans[i][j];
+
+    // 语言切换次数（1维）
+    int switches = 0;
+    for (size_t i = 1; i < seq.size(); i++)
+        if (seq[i] != seq[i - 1])
+            switches++;
+    feat(idx++) = switches;
+
+    // 是否包含翻译（1维）
+    feat(idx++) = count[0] > 0 && (count[1] > 0 || count[2] > 0 || count[3] > 0);
+
+    // 是否包含罗马音（1维）
+    feat(idx++) = count[5] > 0;
+
+    // 是否包含粤拼（1维）
+    feat(idx) = count[4] > 0;
+
+    return feat;
 }
 
-// 大概没人在歌词里写拼音...吧？
-// 网易云都说歌词里包含拼音审核不通过。
-
-// 保留粤拼检测算法
-float LrcLanguageHelper::detect_is_jyutping(const CString& input)
+LrcLanguageHelper::LanguageClassification LrcLanguageHelper::detect_song_language_classification(
+    const CStringArray& lyrics)
 {
-    const auto s = static_cast<CStringA>(CT2A(input));
-    // 根据LSHK官方粤拼文档校正，加入其他方案的常见组合，最大程度提升置信度
-    static const std::initializer_list<CStringA> jyutping_initials = { // 粤拼声母
-        "b", "p", "d", "t", "g", "k", "gw", "kw", "gu", "ku", // 爆发音
-        "m", "n", "ng", // 塞擦音
-        "z", "c", "dz", "ts", // 鼻音
-        "f", "s", "h", // 擦音
-        "w", "j", "y", // 近音
-        "l" // 边近音
-    };
-    static const std::initializer_list<CStringA> jyutping_finals = { // 粤拼韵母
-        "i", "iu", "im", "in", "ing", // i-
-        "u", "ui", "un", "um", "ung", // u-
-        "ei", "en", "e", "eu", "em", "eng", // e-
-        "eoi", "eon", // eo-
-        "oe", "oeng", // oe-
-        "ou", "o", "oi", "on", "ong", // o-
-        "a", "ai", "au", "am", "an", "ang", // a-
-        "aa", "aai", "aau", "aam", "aan", "aang" // aa-
-    };
-    static const std::initializer_list<CStringA> jyutping_nasal_sounds = { // 鼻音单独成韵（粤语特有）
-        "m", "ng"
-    };
-    int i = 0;
-    auto len = s.GetLength();
-    int confidence_token = 0, total_token = 0;
-    while (i < len) {
-        // 声母（最长匹配，可以没有）
-        total_token++;
-        CStringA initial = match_from_list(s, i, jyutping_initials);
-        if (!initial.IsEmpty()) i += initial.GetLength();
-
-        // 韵母（最长匹配，必须包含）
-        CStringA final = match_from_list(s, i, jyutping_finals);
-        if (final.IsEmpty())
-        {
-            // 检测鼻音单独成韵的特殊情况
-            CStringA nasal_sound = match_from_list(s, i, jyutping_nasal_sounds);
-            if (nasal_sound.IsEmpty())
-            {
-                for (; i < len && s[i] != ' '; ++i)
-                    ;
-                if (i == len - 1)
-                    break;
-                ++i;
-                continue;
-            }
-            i += nasal_sound.GetLength();
-        }
-        else
-        {
-            i += final.GetLength();
-        }
-
-        // 入声尾（可选）
-        if (i < len) {
-            char c = s[i];
-            if (c == 'p' || c == 't' || c == 'k') i++;
-        }
-        
-        for (; i < len; ++i) {
-            unsigned char c = s[i];
-            if (isalpha(c)) break;
-        }
-        confidence_token++;
+    std::vector<std::string> lyric_lang_type;
+    for (int i = 0; i < lyrics.GetCount(); ++i)
+    {
+        const auto& line = lyrics[i];
+        lyric_lang_type.push_back(lyric_type_to_std_string(detect_line_language_type(line)));
     }
-    float confidence = confidence_token * 1.0f / total_token;
-    return confidence;
+    auto song_feat = extract_song_features(lyric_lang_type);
+    int reasoning_result;
+    {
+        std::lock_guard lock(dlib_mutex);
+        reasoning_result = song_net_reasoning(song_feat);
+    }
+    static std::unordered_map<LanguageClassification, unsigned long> table = {
+        {LanguageClassification::zh_only, 0},
+        {LanguageClassification::jp_only, 1},
+        {LanguageClassification::kr_only, 2},
+        {LanguageClassification::en_only, 3},
+        {LanguageClassification::jp_zh_trans, 4},
+        {LanguageClassification::jp_roma, 5},
+        {LanguageClassification::en_zh_trans, 6},
+        {LanguageClassification::kr_zh_trans, 7},
+        {LanguageClassification::kr_roma, 8},
+        {LanguageClassification::zh_jyut, 9},
+        {LanguageClassification::jp_zh_trans_roma, 10},
+        {LanguageClassification::kr_zh_trans_roma, 11}
+    };
+    
+    auto it = std::ranges::find_if(table, [reasoning_result](const std::pair<LanguageClassification, unsigned long>& key) -> bool {
+        return key.second == reasoning_result;
+    });
+    if (it != table.end())
+        return it->first;
+    return LanguageClassification::en_only;
+}
+
+LrcLanguageHelper& LrcLanguageHelper::GetSingleton()
+{
+    static LrcLanguageHelper helper_instance;
+    return helper_instance;
 }
 
 LrcProgressNode::LrcProgressNode(int t, const CString& text_with_node)
@@ -647,10 +645,10 @@ float LrcProgressNode::get_lrc_percentage(float current_timestamp) const
 }
 
 LrcProgressMultiNode::LrcProgressMultiNode
-    (int t, const CString& str_1, const CSimpleArray<CString>& str_arr_2):
+    (int t, const CString& str_1, const CSimpleArray<CString>& str_arr_2, LrcLanguageHelper::LanguageClassification classification):
     LrcAbstractNode(t),
     LrcProgressNode(t, str_1),
-    LrcMultiNode(t, SplitLrcForProgressMultiNode2(str_arr_2)) { }
+    LrcMultiNode(t, SplitLrcForProgressMultiNode2(str_arr_2), classification) { }
 
 LrcFileControllerNative::~LrcFileControllerNative()
 {
@@ -682,6 +680,7 @@ void LrcFileControllerNative::parse_lrc_file(const CString& file_path)
 
 void LrcFileControllerNative::parse_lrc_file_stream(CFile* file_stream)
 {
+    static std::regex time_tag_regex(R"(\[\s*(\d{1,2})\s*[:.]\s*(\d{1,2})(?:\s*[:.]\s*(\d{1,4}))?\s*\])");
     // 目前仅支持逐行lrc解析
     if (file_stream == nullptr)
     {
@@ -717,41 +716,6 @@ void LrcFileControllerNative::parse_lrc_file_stream(CFile* file_stream)
     int start = 0, flag_decoding_metadata = 1;
     std::stack<CString> lyrics_in_ms;
     int recorded_ms = 0;
-
-    auto pump_stack = [&](bool is_lrc_ended)
-    {
-        CSimpleArray<CString> lrc_texts;
-        while (!lyrics_in_ms.empty())
-        {
-            lrc_texts.Add(lyrics_in_ms.top());
-            lyrics_in_ms.pop();
-        }
-        if (lrc_texts.GetSize() > 1)
-            std::reverse(lrc_texts.GetData(), lrc_texts.GetData() + lrc_texts.GetSize());
-        if (lrc_texts.GetSize() == 0)
-            return;
-        if (LrcAbstractNode* node = LrcNodeFactory::CreateLrcNode(recorded_ms, lrc_texts))
-        {
-            if (!lrc_nodes.IsEmpty())
-            {
-                lrc_nodes[lrc_nodes.GetCount() - 1]->set_lrc_end_timestamp(recorded_ms);
-            }
-            if (is_lrc_ended)
-            {
-                node->set_lrc_end_timestamp(std::floor(this->song_duration_sec * 1000));
-            }
-            lrc_nodes.Add(node);
-            if (node->is_translation_enabled())
-                this->set_auxiliary_info_enabled(LrcAuxiliaryInfoNative::Translation);
-            if (node->is_romanization_enabled())
-                this->set_auxiliary_info_enabled(LrcAuxiliaryInfoNative::Romanization);
-        }
-        else
-        {
-            // AfxMessageBox(_T("err: create lrc node failed, aborting!"), MB_ICONERROR);
-            throw gcnew System::InvalidOperationException("Create lrc node failed, aborting!");
-        }
-    };
 
     while (start < file_content_w.GetLength())
     {
@@ -835,8 +799,14 @@ void LrcFileControllerNative::parse_lrc_file_stream(CFile* file_stream)
         while (lyric_text.GetLength() > 0 && lyric_text[0] == '[')
         {
             int time_tag_end_index_multi = lyric_text.Find(']');
-            bool is_malformed_time_tag = time_tag_end_index_multi == -1 || lyric_text[0] != '[' || lyric_text[3] != ':' || 
-                (lyric_text[6] != '.' && lyric_text[6] != ':');
+            auto time_tag = static_cast<std::string>(CT2A(lyric_text.Left(time_tag_end_index_multi + 1)));
+            auto utf8 = static_cast<std::string>(CT2A(lyric_text));
+            std::smatch m;
+            bool is_malformed_time_tag = true;
+            if (std::regex_search(time_tag, m, time_tag_regex))
+            {
+                is_malformed_time_tag = m.size() != 4;
+            }
             if (is_malformed_time_tag)
             {
                 // malformed time tag
@@ -847,14 +817,19 @@ void LrcFileControllerNative::parse_lrc_file_stream(CFile* file_stream)
                 lyric_text = lyric_text.Mid(time_tag_end_index_multi + 1).Trim();
                 continue;
             }
-            int minutes = _ttoi(lyric_text.Mid(1, 2));
-            int seconds = _ttoi(lyric_text.Mid(4, 2));
-            CString milliseconds_str = lyric_text.Mid(7, time_tag_end_index_multi - 7);
-            int milliseconds = _ttoi(milliseconds_str);
-            if (milliseconds_str.GetLength() < 3)
+            int minutes = std::stoi(m[1].str());
+            int seconds = std::stoi(m[2].str());
+            std::string milliseconds_str = m[3].str();
+            int milliseconds = std::stoi(milliseconds_str);
+            if (milliseconds_str.size() < 3)
             {
-                auto multiples = 3 - milliseconds_str.GetLength();
+                auto multiples = 3 - milliseconds_str.size();
                 milliseconds *= std::floor(pow(10, multiples));
+            }
+            if (milliseconds_str.size() > 4)
+            {
+                auto multiples = milliseconds_str.size() - 3;
+                milliseconds /= std::floor(pow(10, multiples));
             }
             int total_ms_multi = minutes * 60000 + seconds * 1000 + milliseconds;
             if (total_ms_multi < 0) total_ms_multi = 0;
@@ -881,6 +856,49 @@ void LrcFileControllerNative::parse_lrc_file_stream(CFile* file_stream)
                              {
                                  return a.time_stamp_ms < b.time_stamp_ms;
                              });
+    CStringArray arr_cleaned;
+    for (const CachedTimeLine& line : time_lines)
+    {
+        arr_cleaned.Add(line.text);
+    }
+    auto& detector_instance = LrcLanguageHelper::GetSingleton();
+    auto classification = detector_instance.detect_song_language_classification(arr_cleaned);
+    ATLTRACE("info: detected classification = %d\n", classification);
+    
+    auto pump_stack = [&](bool is_lrc_ended)
+    {
+        CSimpleArray<CString> lrc_texts;
+        while (!lyrics_in_ms.empty())
+        {
+            lrc_texts.Add(lyrics_in_ms.top());
+            lyrics_in_ms.pop();
+        }
+        if (lrc_texts.GetSize() > 1)
+            std::reverse(lrc_texts.GetData(), lrc_texts.GetData() + lrc_texts.GetSize());
+        if (lrc_texts.GetSize() == 0)
+            return;
+        if (LrcAbstractNode* node = LrcNodeFactory::CreateLrcNode(recorded_ms, lrc_texts, classification))
+        {
+            if (!lrc_nodes.IsEmpty())
+            {
+                lrc_nodes[lrc_nodes.GetCount() - 1]->set_lrc_end_timestamp(recorded_ms);
+            }
+            if (is_lrc_ended)
+            {
+                node->set_lrc_end_timestamp(std::floor(this->song_duration_sec * 1000));
+            }
+            lrc_nodes.Add(node);
+            if (node->is_translation_enabled())
+                this->set_auxiliary_info_enabled(LrcAuxiliaryInfoNative::Translation);
+            if (node->is_romanization_enabled())
+                this->set_auxiliary_info_enabled(LrcAuxiliaryInfoNative::Romanization);
+        }
+        else
+        {
+            // AfxMessageBox(_T("err: create lrc node failed, aborting!"), MB_ICONERROR);
+            throw gcnew System::InvalidOperationException("Create lrc node failed, aborting!");
+        }
+    };
 
     for (size_t i = 0; i < time_lines.size(); ++i)
     {
@@ -998,6 +1016,16 @@ int MusicPlayerLibrary::LrcFileControllerNative::get_metadata_info(LrcMetadataTy
         return -1;
     }
     return 0;
+}
+
+LrcLanguageInfo MusicPlayerLibrary::LrcFileControllerNative::scan_lrc_main_language_type()
+{
+    return LrcLanguageInfo();
+}
+
+void MusicPlayerLibrary::LrcFileControllerNative::correct_lrc_language_info(LrcLanguageInfo info)
+{
+
 }
 
 LrcMetadataTypeNative LrcFileControllerNative::get_metadata_type(const CString& str)
