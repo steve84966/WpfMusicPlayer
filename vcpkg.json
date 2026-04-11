@@ -8,6 +8,7 @@
     "cpp-base64",
     "kissfft",
     "uchardet",
-    "libiconv"
+    "libiconv",
+    "dlib"
   ]
 }
